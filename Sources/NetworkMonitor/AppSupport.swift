@@ -3,20 +3,46 @@ import Combine
 import SwiftUI
 
 enum StatusPopoverPositioning {
+    static func placementFrame(
+        screenFrame: CGRect,
+        visibleFrame: CGRect,
+        safeAreaInsets: NSEdgeInsets?
+    ) -> CGRect {
+        guard let safeAreaInsets else {
+            return visibleFrame
+        }
+
+        let safeFrame = CGRect(
+            x: screenFrame.minX + safeAreaInsets.left,
+            y: screenFrame.minY + safeAreaInsets.bottom,
+            width: screenFrame.width - safeAreaInsets.left - safeAreaInsets.right,
+            height: screenFrame.height - safeAreaInsets.top - safeAreaInsets.bottom
+        )
+        let minX: CGFloat = Swift.max(visibleFrame.minX, safeFrame.minX)
+        let minY: CGFloat = Swift.max(visibleFrame.minY, safeFrame.minY)
+        let maxX: CGFloat = Swift.min(visibleFrame.maxX, safeFrame.maxX)
+        let maxY: CGFloat = Swift.min(visibleFrame.maxY, safeFrame.maxY)
+
+        guard maxX >= minX, maxY >= minY else {
+            return visibleFrame
+        }
+
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
     static func origin(
         anchorFrame: CGRect,
         popoverSize: CGSize,
-        visibleFrame: CGRect,
+        placementFrame: CGRect,
         margin: CGFloat = 8
     ) -> CGPoint {
-        let minimumX = visibleFrame.minX + margin
-        let maximumX = max(minimumX, visibleFrame.maxX - popoverSize.width - margin)
+        let minimumX = placementFrame.minX + margin
+        let maximumX = max(minimumX, placementFrame.maxX - popoverSize.width - margin)
         let idealX = anchorFrame.midX - (popoverSize.width / 2)
         let x = min(max(idealX, minimumX), maximumX)
 
-        let minimumY = visibleFrame.minY + margin
-        let maximumY = max(minimumY, visibleFrame.maxY - popoverSize.height - margin)
-        let y = min(maximumY, maximumY)
+        let minimumY = placementFrame.minY + margin
+        let y = max(minimumY, placementFrame.maxY - popoverSize.height - margin)
 
         return CGPoint(x: x, y: y)
     }
@@ -129,11 +155,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let onOpen: () -> Void
     private let onRestart: () -> Void
     private let onQuit: () -> Void
+    private let statusItemWidth: CGFloat
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
 
     private var statusLabelCancellable: AnyCancellable?
+    private var popoverLayoutCancellable: AnyCancellable?
     private var hoverTask: Task<Void, Never>?
     private var dismissTask: Task<Void, Never>?
     private var hoverObservationTimer: Timer?
@@ -151,6 +179,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         self.onOpen = onOpen
         self.onRestart = onRestart
         self.onQuit = onQuit
+        self.statusItemWidth = Self.measureStatusItemWidth()
         super.init()
 
         configureStatusItem()
@@ -202,10 +231,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return
         }
 
+        statusItem.length = statusItemWidth
         button.target = self
         button.action = #selector(handleStatusItemAction(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.toolTip = "Network Monitor"
+        button.lineBreakMode = .byClipping
         updateButtonTitle(with: store.statusLabelText)
         startHoverObservation()
     }
@@ -233,6 +264,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             .sink { [weak self] statusText in
                 self?.updateButtonTitle(with: statusText)
             }
+
+        popoverLayoutCancellable = store.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, self.popover.isShown else {
+                    return
+                }
+                DispatchQueue.main.async { [weak self] in
+                    self?.positionPopoverWindow()
+                }
+            }
     }
 
     private func updateButtonTitle(with text: String) {
@@ -245,6 +287,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             .foregroundColor: NSColor.labelColor
         ]
         button.attributedTitle = NSAttributedString(string: text, attributes: attributes)
+    }
+
+    private static func measureStatusItemWidth() -> CGFloat {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        ]
+        let reference = NSAttributedString(
+            string: "↓ 999.9 MB/s ↑ 999.9 MB/s",
+            attributes: attributes
+        )
+        return ceil(reference.size().width) + 16
     }
 
     private func startHoverObservation() {
@@ -340,18 +393,29 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return
         }
 
-        let screenFrame = popoverWindow.screen?.visibleFrame
-            ?? statusItem.button?.window?.screen?.visibleFrame
-            ?? NSScreen.main?.visibleFrame
-            ?? .zero
-        guard screenFrame != .zero else {
+        let screen = popoverWindow.screen
+            ?? statusItem.button?.window?.screen
+            ?? NSScreen.main
+        guard let screen else {
             return
         }
+
+        let placementFrame = StatusPopoverPositioning.placementFrame(
+            screenFrame: screen.frame,
+            visibleFrame: screen.visibleFrame,
+            safeAreaInsets: {
+                if #available(macOS 12.0, *) {
+                    return screen.safeAreaInsets
+                } else {
+                    return nil
+                }
+            }()
+        )
 
         let origin = StatusPopoverPositioning.origin(
             anchorFrame: buttonFrame,
             popoverSize: popoverWindow.frame.size,
-            visibleFrame: screenFrame
+            placementFrame: placementFrame
         )
         popoverWindow.setFrameOrigin(origin)
     }

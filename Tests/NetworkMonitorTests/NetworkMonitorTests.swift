@@ -1,5 +1,6 @@
 import Testing
 @testable import NetworkMonitor
+import AppKit
 import CoreGraphics
 import Foundation
 
@@ -251,7 +252,7 @@ func statusPopoverPositioningStaysBelowMenuBarAndInsideScreen() {
     let origin = StatusPopoverPositioning.origin(
         anchorFrame: CGRect(x: 800, y: 1180, width: 24, height: 22),
         popoverSize: CGSize(width: 360, height: 280),
-        visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 945)
+        placementFrame: CGRect(x: 0, y: 0, width: 1512, height: 945)
     )
 
     #expect(origin.y == 657)
@@ -263,11 +264,22 @@ func statusPopoverPositioningClampsHorizontallyNearScreenEdge() {
     let origin = StatusPopoverPositioning.origin(
         anchorFrame: CGRect(x: 1490, y: 1180, width: 24, height: 22),
         popoverSize: CGSize(width: 360, height: 280),
-        visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 945)
+        placementFrame: CGRect(x: 0, y: 0, width: 1512, height: 945)
     )
 
     #expect(origin.x == 1144)
     #expect(origin.y == 657)
+}
+
+@Test
+func statusPopoverPlacementFrameHonorsSafeAreaInsets() {
+    let frame = StatusPopoverPositioning.placementFrame(
+        screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+        visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 954),
+        safeAreaInsets: NSEdgeInsets(top: 74, left: 0, bottom: 0, right: 0)
+    )
+
+    #expect(frame == CGRect(x: 0, y: 0, width: 1512, height: 908))
 }
 
 private enum MockError: Error {
