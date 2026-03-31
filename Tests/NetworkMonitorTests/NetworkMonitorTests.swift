@@ -72,6 +72,48 @@ func storeFiltersAndSortsDisplayedProcesses() {
     #expect(store.displayedProcesses.map(\.name) == ["Codex", "Safari"])
 }
 
+@MainActor
+@Test
+func storePreservesSnapshotWhileRetryingAndMarksStalled() {
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        stallThreshold: 3,
+        now: { Date(timeIntervalSince1970: 4_000) }
+    )
+    let snapshot = LiveSnapshot(
+        capturedAt: Date(timeIntervalSince1970: 3_995),
+        totalDownloadBytesPerSecond: 900,
+        totalUploadBytesPerSecond: 600,
+        processes: [
+            ProcessUsage(pid: 1, name: "Safari", downloadBytesPerSecond: 600, uploadBytesPerSecond: 200, totalBytesPerSecond: 800, shareOfTotal: 0.53, lastSeen: Date(timeIntervalSince1970: 3_995))
+        ]
+    )
+
+    store.consume(.snapshot(snapshot))
+    store.consume(.retrying(CaptureRecoveryState(
+        message: "nettop exited unexpectedly.",
+        attempt: 1,
+        nextRetryDate: Date(timeIntervalSince1970: 4_001),
+        lastSuccessfulCaptureAt: snapshot.capturedAt
+    )))
+
+    if case let .retrying(retrySnapshot, status) = store.viewState {
+        #expect(retrySnapshot == snapshot)
+        #expect(status.attempt == 1)
+    } else {
+        Issue.record("Expected retrying state")
+    }
+    #expect(store.displayedProcesses.map(\.name) == ["Safari"])
+
+    store.consume(.snapshot(snapshot))
+    store.evaluateStaleness(now: Date(timeIntervalSince1970: 4_000))
+    if case let .stalled(stalledSnapshot, _) = store.viewState {
+        #expect(stalledSnapshot == snapshot)
+    } else {
+        Issue.record("Expected stalled state")
+    }
+}
+
 @Test
 func captureServiceRestartsAfterFailure() async throws {
     let header = "time,,interface,state,bytes_in,bytes_out,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,"
@@ -110,9 +152,42 @@ func captureServiceRestartsAfterFailure() async throws {
     eventTask.cancel()
 
     let events = await recorder.events
-    #expect(events.contains(where: { if case .failed = $0 { return true } else { return false } }))
+    #expect(events.contains(where: { if case .retrying = $0 { return true } else { return false } }))
     #expect(events.filter { if case .starting = $0 { return true } else { return false } }.count >= 2)
     #expect(events.contains(where: { if case .snapshot = $0 { return true } else { return false } }))
+}
+
+@Test
+func captureServiceStopsAfterRepeatedStartupFailure() async throws {
+    let service = NettopCaptureService(
+        producer: MockProducer(
+            scripts: [
+                .throwing(NettopCaptureError.failedToStart("missing nettop")),
+                .throwing(NettopCaptureError.failedToStart("missing nettop"))
+            ]
+        ),
+        restartDelayNanoseconds: 0,
+        terminalStartupFailureThreshold: 2,
+        sleep: { _ in }
+    )
+
+    let recorder = EventRecorder()
+    let eventTask = Task {
+        for await event in service.events {
+            await recorder.record(event)
+            if await recorder.hasTerminalFailure {
+                break
+            }
+        }
+    }
+
+    await service.start()
+    try await Task.sleep(nanoseconds: 150_000_000)
+    eventTask.cancel()
+
+    let events = await recorder.events
+    #expect(events.contains(where: { if case .retrying = $0 { return true } else { return false } }))
+    #expect(events.contains(where: { if case .failed(let message) = $0 { return message.contains("missing nettop") } else { return false } }))
 }
 
 private enum MockError: Error {
@@ -124,6 +199,7 @@ private final class MockProducer: NettopStreamProducing, @unchecked Sendable {
     enum Script {
         case finish([String])
         case failure([String], Error)
+        case throwing(Error)
     }
 
     private let lock = NSLock()
@@ -153,6 +229,9 @@ private final class MockProducer: NettopStreamProducing, @unchecked Sendable {
                         continuation.yield(line)
                     }
                     continuation.finish(throwing: error)
+
+                case let .throwing(error):
+                    continuation.finish(throwing: error)
                 }
             }
 
@@ -169,10 +248,17 @@ private actor EventRecorder {
     private(set) var events: [CaptureEvent] = []
 
     var hasRecoveredSnapshot: Bool {
-        let failed = events.contains { if case .failed = $0 { return true } else { return false } }
-        let restarted = events.filter { if case .starting = $0 { return true } else { return false } }.count >= 2
+        let restarted = events.filter { event in
+            if case .starting = event { return true }
+            return false
+        }.count >= 2
         let snapshotted = events.contains { if case .snapshot = $0 { return true } else { return false } }
-        return failed && restarted && snapshotted
+        let retrying = events.contains { if case .retrying = $0 { return true } else { return false } }
+        return retrying && restarted && snapshotted
+    }
+
+    var hasTerminalFailure: Bool {
+        events.contains { if case .failed = $0 { return true } else { return false } }
     }
 
     func record(_ event: CaptureEvent) {

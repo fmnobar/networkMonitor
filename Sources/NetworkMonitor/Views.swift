@@ -16,6 +16,11 @@ struct PreviewPopoverView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    if let lastSuccessfulCaptureText = store.lastSuccessfulCaptureText, lastSuccessfulCaptureText != store.snapshotTimeText {
+                        Text("Last good sample \(lastSuccessfulCaptureText)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer()
@@ -30,23 +35,26 @@ struct PreviewPopoverView: View {
 
             Divider()
 
+            if let stateMessage = store.stateMessage, !stateMessage.isEmpty {
+                statusBanner(
+                    title: bannerTitle,
+                    message: stateMessage
+                )
+            }
+
             Group {
                 switch store.viewState {
                 case .starting:
                     previewPlaceholder(title: "Starting capture…", subtitle: "Launching nettop and waiting for the first sample.")
-                case .noTraffic:
-                    previewPlaceholder(title: "No active traffic", subtitle: "No process reported network usage in the latest interval.")
-                case let .failed(message):
-                    previewPlaceholder(title: "Capture unavailable", subtitle: message)
-                case .live:
-                    if store.topFive.isEmpty {
-                        previewPlaceholder(title: "No active traffic", subtitle: "No process reported network usage in the latest interval.")
-                    } else {
+                case .stopped(nil), .failed(nil, _), .retrying(nil, _):
+                    previewPlaceholder(title: emptyStateTitle, subtitle: store.stateMessage ?? "Capture has no live data yet.")
+                case .live, .noTraffic, .retrying, .stalled, .failed, .stopped:
+                    if let snapshot = store.activeSnapshot, !snapshot.processes.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Top 5 Consumers")
                                 .font(.subheadline.weight(.semibold))
 
-                            ForEach(store.topFive) { usage in
+                            ForEach(Array(snapshot.processes.prefix(5))) { usage in
                                 HStack(alignment: .top, spacing: 10) {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(usage.name)
@@ -70,6 +78,8 @@ struct PreviewPopoverView: View {
                                 }
                             }
                         }
+                    } else {
+                        previewPlaceholder(title: emptyStateTitle, subtitle: store.stateMessage ?? "No process reported network usage in the latest interval.")
                     }
                 }
             }
@@ -87,6 +97,42 @@ struct PreviewPopoverView: View {
         .frame(width: 360)
     }
 
+    private var bannerTitle: String {
+        switch store.viewState {
+        case .starting:
+            return "Starting"
+        case .live:
+            return "Live"
+        case .noTraffic:
+            return "Idle"
+        case .retrying:
+            return "Retrying"
+        case .stalled:
+            return "Stalled"
+        case .failed:
+            return "Unavailable"
+        case .stopped:
+            return "Stopped"
+        }
+    }
+
+    private var emptyStateTitle: String {
+        switch store.viewState {
+        case .starting:
+            return "Starting capture…"
+        case .retrying:
+            return "Retrying capture"
+        case .failed:
+            return "Capture unavailable"
+        case .stopped:
+            return "Capture stopped"
+        case .stalled:
+            return "Live data stalled"
+        case .noTraffic, .live:
+            return "No active traffic"
+        }
+    }
+
     @ViewBuilder
     private func previewPlaceholder(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -99,6 +145,23 @@ struct PreviewPopoverView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 8)
+    }
+
+    private func statusBanner(title: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
     }
 }
 
@@ -117,24 +180,10 @@ struct DashboardView: View {
                     subtitle: "Launching nettop and waiting for the first 1-second sample."
                 )
 
-            case .noTraffic(let date):
-                statusPanel(
-                    title: "No active traffic",
-                    subtitle: date.map { "No process reported traffic in the sample captured at \(NetworkFormatting.snapshotTime($0))." }
-                        ?? "No process reported traffic in the latest sample."
-                )
+            case .noTraffic:
+                content
 
-            case .failed(let message):
-                VStack(alignment: .leading, spacing: 12) {
-                    statusPanel(
-                        title: "Capture unavailable",
-                        subtitle: message
-                    )
-
-                    Button("Restart Capture", action: onRestart)
-                }
-
-            case .live:
+            case .retrying, .stalled, .failed, .stopped, .live:
                 content
             }
         }
@@ -168,9 +217,14 @@ struct DashboardView: View {
                 Spacer()
 
                 if let snapshotTime = store.snapshotTimeText {
-                    Text("Updated \(snapshotTime)")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Updated \(snapshotTime)")
+                        if let lastSuccessfulCaptureText = store.lastSuccessfulCaptureText, lastSuccessfulCaptureText != snapshotTime {
+                            Text("Last good sample \(lastSuccessfulCaptureText)")
+                        }
+                    }
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                 }
             }
         }
@@ -178,10 +232,17 @@ struct DashboardView: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if let stateMessage = store.stateMessage, !stateMessage.isEmpty {
+                statusPanel(
+                    title: panelTitle,
+                    subtitle: stateMessage
+                )
+            }
+
             if store.displayedProcesses.isEmpty {
                 statusPanel(
-                    title: "No matching processes",
-                    subtitle: "Adjust the search term to see active network consumers."
+                    title: store.snapshot == nil ? "No captured processes" : "No matching processes",
+                    subtitle: store.snapshot == nil ? "The capture pipeline does not have a live snapshot to display." : "Adjust the search term to see active network consumers."
                 )
             } else {
                 Table(store.displayedProcesses, sortOrder: $store.sortOrder) {
@@ -228,6 +289,25 @@ struct DashboardView: View {
                     .width(min: 90, ideal: 110)
                 }
             }
+        }
+    }
+
+    private var panelTitle: String {
+        switch store.viewState {
+        case .starting:
+            return "Starting capture…"
+        case .live:
+            return "Live traffic"
+        case .noTraffic:
+            return "No active traffic"
+        case .retrying:
+            return "Retrying capture"
+        case .stalled:
+            return "Live data stalled"
+        case .failed:
+            return "Capture unavailable"
+        case .stopped:
+            return "Capture stopped"
         }
     }
 

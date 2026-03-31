@@ -1,0 +1,288 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		021000000000000000000001 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000001 /* NetworkMonitor.swift */; };
+		021000000000000000000002 /* AppSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000002 /* AppSupport.swift */; };
+		021000000000000000000003 /* Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000003 /* Diagnostics.swift */; };
+		021000000000000000000004 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000004 /* Models.swift */; };
+		021000000000000000000005 /* NettopCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000005 /* NettopCaptureService.swift */; };
+		021000000000000000000006 /* TrafficDashboardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000006 /* TrafficDashboardStore.swift */; };
+		021000000000000000000007 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000007 /* Views.swift */; };
+		021000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 03100000000000000000000A /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		031000000000000000000001 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/NetworkMonitor.swift; sourceTree = "<group>"; };
+		031000000000000000000002 /* AppSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/AppSupport.swift; sourceTree = "<group>"; };
+		031000000000000000000003 /* Diagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/Diagnostics.swift; sourceTree = "<group>"; };
+		031000000000000000000004 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/Models.swift; sourceTree = "<group>"; };
+		031000000000000000000005 /* NettopCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/NettopCaptureService.swift; sourceTree = "<group>"; };
+		031000000000000000000006 /* TrafficDashboardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/TrafficDashboardStore.swift; sourceTree = "<group>"; };
+		031000000000000000000007 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/Views.swift; sourceTree = "<group>"; };
+		031000000000000000000008 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		031000000000000000000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = NetworkMonitorApp/Info.plist; sourceTree = "<group>"; };
+		03100000000000000000000A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = NetworkMonitorApp/Assets.xcassets; sourceTree = "<group>"; };
+		03100000000000000000000B /* build_app.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = scripts/build_app.sh; sourceTree = "<group>"; };
+		03100000000000000000000C /* archive_app.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = scripts/archive_app.sh; sourceTree = "<group>"; };
+		03100000000000000000000D /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
+		03100000000000000000000E /* NetworkMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NetworkMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		051000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		041000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				041000000000000000000002 /* Products */,
+				041000000000000000000003 /* Sources */,
+				041000000000000000000004 /* Resources */,
+				041000000000000000000005 /* Scripts */,
+				03100000000000000000000D /* Package.swift */,
+				031000000000000000000008 /* README.md */,
+			);
+			sourceTree = "<group>";
+		};
+		041000000000000000000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				03100000000000000000000E /* NetworkMonitor.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		041000000000000000000003 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				031000000000000000000002 /* AppSupport.swift */,
+				031000000000000000000003 /* Diagnostics.swift */,
+				031000000000000000000004 /* Models.swift */,
+				031000000000000000000005 /* NettopCaptureService.swift */,
+				031000000000000000000001 /* NetworkMonitor.swift */,
+				031000000000000000000006 /* TrafficDashboardStore.swift */,
+				031000000000000000000007 /* Views.swift */,
+			);
+			name = Sources;
+			sourceTree = "<group>";
+		};
+		041000000000000000000004 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				031000000000000000000009 /* Info.plist */,
+				03100000000000000000000A /* Assets.xcassets */,
+			);
+			name = Resources;
+			sourceTree = "<group>";
+		};
+		041000000000000000000005 /* Scripts */ = {
+			isa = PBXGroup;
+			children = (
+				03100000000000000000000B /* build_app.sh */,
+				03100000000000000000000C /* archive_app.sh */,
+			);
+			name = Scripts;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		061000000000000000000001 /* NetworkMonitor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 091000000000000000000002 /* Build configuration list for PBXNativeTarget "NetworkMonitor" */;
+			buildPhases = (
+				051000000000000000000001 /* Sources */,
+				051000000000000000000002 /* Frameworks */,
+				051000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NetworkMonitor;
+			productName = NetworkMonitor;
+			productReference = 03100000000000000000000E /* NetworkMonitor.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		071000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 2640;
+				TargetAttributes = {
+					061000000000000000000001 = {
+						CreatedOnToolsVersion = 26.4;
+					};
+				};
+			};
+			buildConfigurationList = 091000000000000000000001 /* Build configuration list for PBXProject "NetworkMonitorApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 041000000000000000000001;
+			productRefGroup = 041000000000000000000002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				061000000000000000000001 /* NetworkMonitor */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		051000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				021000000000000000000008 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		051000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				021000000000000000000002 /* AppSupport.swift in Sources */,
+				021000000000000000000003 /* Diagnostics.swift in Sources */,
+				021000000000000000000004 /* Models.swift in Sources */,
+				021000000000000000000005 /* NettopCaptureService.swift in Sources */,
+				021000000000000000000001 /* NetworkMonitor.swift in Sources */,
+				021000000000000000000006 /* TrafficDashboardStore.swift in Sources */,
+				021000000000000000000007 /* Views.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		081000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		081000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		081000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NetworkMonitorApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fmnobar.NetworkMonitor;
+				PRODUCT_NAME = NetworkMonitor;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		081000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NetworkMonitorApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fmnobar.NetworkMonitor;
+				PRODUCT_NAME = NetworkMonitor;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		091000000000000000000001 /* Build configuration list for PBXProject "NetworkMonitorApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				081000000000000000000001 /* Debug */,
+				081000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		091000000000000000000002 /* Build configuration list for PBXNativeTarget "NetworkMonitor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				081000000000000000000003 /* Debug */,
+				081000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 071000000000000000000001 /* Project object */;
+}

@@ -114,24 +114,31 @@ struct ProcessNettopStreamProducer: NettopStreamProducing {
 
 actor NettopCaptureService {
     typealias SleepFunction = @Sendable (UInt64) async -> Void
+    typealias NowFunction = @Sendable () -> Date
 
     nonisolated let events: AsyncStream<CaptureEvent>
 
     private let continuation: AsyncStream<CaptureEvent>.Continuation
     private let producer: any NettopStreamProducing
     private let restartDelayNanoseconds: UInt64
+    private let terminalStartupFailureThreshold: Int
     private let sleep: SleepFunction
+    private let now: NowFunction
 
     private var runnerTask: Task<Void, Never>?
     private var currentStopHandler: (@Sendable () -> Void)?
     private var stopRequested = false
+    private var consecutiveFailureCount = 0
+    private var lastSuccessfulCaptureAt: Date?
 
     init(
         producer: any NettopStreamProducing = ProcessNettopStreamProducer(),
         restartDelayNanoseconds: UInt64 = 2_000_000_000,
+        terminalStartupFailureThreshold: Int = 3,
         sleep: @escaping SleepFunction = { nanoseconds in
             try? await Task.sleep(nanoseconds: nanoseconds)
-        }
+        },
+        now: @escaping NowFunction = Date.init
     ) {
         var streamContinuation: AsyncStream<CaptureEvent>.Continuation?
         self.events = AsyncStream(bufferingPolicy: .bufferingNewest(100)) { continuation in
@@ -140,7 +147,9 @@ actor NettopCaptureService {
         self.continuation = streamContinuation!
         self.producer = producer
         self.restartDelayNanoseconds = restartDelayNanoseconds
+        self.terminalStartupFailureThreshold = terminalStartupFailureThreshold
         self.sleep = sleep
+        self.now = now
     }
 
     func start() {
@@ -149,6 +158,7 @@ actor NettopCaptureService {
         }
 
         stopRequested = false
+        consecutiveFailureCount = 0
         continuation.yield(.starting)
         runnerTask = Task {
             await self.runLoop()
@@ -167,6 +177,7 @@ actor NettopCaptureService {
     func restart() {
         stop()
         stopRequested = false
+        consecutiveFailureCount = 0
         continuation.yield(.starting)
         runnerTask = Task {
             await self.runLoop()
@@ -180,6 +191,7 @@ actor NettopCaptureService {
         }
 
         while !Task.isCancelled && !stopRequested {
+            var emittedSnapshotThisAttempt = false
             do {
                 let handle = try producer.makeStream()
                 currentStopHandler = handle.stop
@@ -192,11 +204,18 @@ actor NettopCaptureService {
                         }
 
                         for snapshot in parser.consume(line: line) {
+                            emittedSnapshotThisAttempt = true
+                            consecutiveFailureCount = 0
+                            lastSuccessfulCaptureAt = snapshot.capturedAt
+                            NetworkMonitorDiagnostics.debug("Received snapshot with \(snapshot.processes.count) active processes.")
                             continuation.yield(.snapshot(snapshot))
                         }
                     }
                 } catch {
                     if let finalSnapshot = parser.finish() {
+                        emittedSnapshotThisAttempt = true
+                        consecutiveFailureCount = 0
+                        lastSuccessfulCaptureAt = finalSnapshot.capturedAt
                         continuation.yield(.snapshot(finalSnapshot))
                     }
                     currentStopHandler = nil
@@ -204,6 +223,9 @@ actor NettopCaptureService {
                 }
 
                 if let finalSnapshot = parser.finish() {
+                    emittedSnapshotThisAttempt = true
+                    consecutiveFailureCount = 0
+                    lastSuccessfulCaptureAt = finalSnapshot.capturedAt
                     continuation.yield(.snapshot(finalSnapshot))
                 }
 
@@ -220,7 +242,22 @@ actor NettopCaptureService {
                     break
                 }
 
-                continuation.yield(.failed(error.localizedDescription))
+                consecutiveFailureCount = emittedSnapshotThisAttempt ? 1 : consecutiveFailureCount + 1
+                let recovery = CaptureRecoveryState(
+                    message: error.localizedDescription,
+                    attempt: consecutiveFailureCount,
+                    nextRetryDate: now().addingTimeInterval(TimeInterval(restartDelayNanoseconds) / 1_000_000_000),
+                    lastSuccessfulCaptureAt: lastSuccessfulCaptureAt
+                )
+
+                if shouldStopAfter(error: error, emittedSnapshotThisAttempt: emittedSnapshotThisAttempt) {
+                    NetworkMonitorDiagnostics.error("Capture failed permanently: \(error.localizedDescription)")
+                    continuation.yield(.failed(error.localizedDescription))
+                    break
+                }
+
+                NetworkMonitorDiagnostics.error("Capture will retry after error: \(error.localizedDescription)")
+                continuation.yield(.retrying(recovery))
                 await sleep(restartDelayNanoseconds)
 
                 guard !stopRequested && !Task.isCancelled else {
@@ -230,5 +267,21 @@ actor NettopCaptureService {
                 continuation.yield(.starting)
             }
         }
+    }
+
+    private func shouldStopAfter(error: Error, emittedSnapshotThisAttempt: Bool) -> Bool {
+        guard !emittedSnapshotThisAttempt, lastSuccessfulCaptureAt == nil else {
+            return false
+        }
+
+        guard consecutiveFailureCount >= terminalStartupFailureThreshold else {
+            return false
+        }
+
+        if case NettopCaptureError.failedToStart = error {
+            return true
+        }
+
+        return false
     }
 }

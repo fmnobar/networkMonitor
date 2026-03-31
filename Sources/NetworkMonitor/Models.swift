@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 
 struct ProcessUsage: Identifiable, Equatable, Sendable {
     let pid: Int
@@ -20,16 +19,27 @@ struct LiveSnapshot: Equatable, Sendable {
     let processes: [ProcessUsage]
 }
 
+struct CaptureRecoveryState: Equatable, Sendable {
+    let message: String
+    let attempt: Int
+    let nextRetryDate: Date?
+    let lastSuccessfulCaptureAt: Date?
+}
+
 enum DashboardViewState: Equatable {
     case starting
     case live(LiveSnapshot)
-    case noTraffic(Date?)
-    case failed(String)
+    case noTraffic(LiveSnapshot)
+    case retrying(snapshot: LiveSnapshot?, status: CaptureRecoveryState)
+    case stalled(snapshot: LiveSnapshot, message: String)
+    case failed(snapshot: LiveSnapshot?, message: String)
+    case stopped(snapshot: LiveSnapshot?)
 }
 
 enum CaptureEvent: Equatable, Sendable {
     case starting
     case snapshot(LiveSnapshot)
+    case retrying(CaptureRecoveryState)
     case failed(String)
     case stopped
 }
@@ -49,6 +59,31 @@ enum NetworkFormatting {
 
     static func lastSeen(_ date: Date) -> String {
         date.formatted(date: .omitted, time: .shortened)
+    }
+
+    static func statusLabel(for snapshot: LiveSnapshot, suffix: String? = nil) -> String {
+        let base = "↓ \(rate(snapshot.totalDownloadBytesPerSecond)) ↑ \(rate(snapshot.totalUploadBytesPerSecond))"
+        guard let suffix, !suffix.isEmpty else {
+            return base
+        }
+        return "\(base) [\(suffix)]"
+    }
+
+    static func retryDescription(_ status: CaptureRecoveryState) -> String {
+        let retryText: String
+        if let nextRetryDate = status.nextRetryDate {
+            retryText = "Retry \(status.attempt) scheduled for \(snapshotTime(nextRetryDate))."
+        } else if status.attempt > 0 {
+            retryText = "Retry \(status.attempt) in progress."
+        } else {
+            retryText = "Restarting capture."
+        }
+
+        if let lastSuccessfulCaptureAt = status.lastSuccessfulCaptureAt {
+            return "\(retryText) Last good sample at \(snapshotTime(lastSuccessfulCaptureAt))."
+        }
+
+        return retryText
     }
 }
 
