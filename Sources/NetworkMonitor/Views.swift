@@ -49,12 +49,12 @@ struct PreviewPopoverView: View {
                 case .stopped(nil), .failed(nil, _), .retrying(nil, _):
                     previewPlaceholder(title: emptyStateTitle, subtitle: store.stateMessage ?? "Capture has no live data yet.")
                 case .live, .noTraffic, .retrying, .stalled, .failed, .stopped:
-                    if let snapshot = store.activeSnapshot, !snapshot.processes.isEmpty {
+                    if !store.topFive.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Top 5 Consumers")
                                 .font(.subheadline.weight(.semibold))
 
-                            ForEach(Array(snapshot.processes.prefix(5))) { usage in
+                            ForEach(store.topFive) { usage in
                                 HStack(alignment: .top, spacing: 10) {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(usage.name)

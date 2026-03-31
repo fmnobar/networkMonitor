@@ -1,12 +1,13 @@
 import Testing
 @testable import NetworkMonitor
+import CoreGraphics
 import Foundation
 
 @Test
 func parserFlushesOnRepeatedHeadersAndHandlesDottedNames() {
     var parser = NettopCSVStreamParser(now: { Date(timeIntervalSince1970: 1_000) })
 
-    let header = "time,,interface,state,bytes_in,bytes_out,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,"
+    let header = "\u{04}\u{08}\u{08}time,,interface,state,bytes_in,bytes_out,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,"
     let lines = [
         header,
         "18:04:43.912151,com.apple.WebKit.Networking.1398,,,1024,2048,0,0,0,,,,,,,,,,,",
@@ -97,8 +98,9 @@ func storePreservesSnapshotWhileRetryingAndMarksStalled() {
         lastSuccessfulCaptureAt: snapshot.capturedAt
     )))
 
+    let stabilizedSnapshot = store.snapshot
     if case let .retrying(retrySnapshot, status) = store.viewState {
-        #expect(retrySnapshot == snapshot)
+        #expect(retrySnapshot == stabilizedSnapshot)
         #expect(status.attempt == 1)
     } else {
         Issue.record("Expected retrying state")
@@ -108,10 +110,64 @@ func storePreservesSnapshotWhileRetryingAndMarksStalled() {
     store.consume(.snapshot(snapshot))
     store.evaluateStaleness(now: Date(timeIntervalSince1970: 4_000))
     if case let .stalled(stalledSnapshot, _) = store.viewState {
-        #expect(stalledSnapshot == snapshot)
+        #expect(stalledSnapshot == store.snapshot)
     } else {
         Issue.record("Expected stalled state")
     }
+}
+
+@MainActor
+@Test
+func storeSmoothsBurstTrafficAndRetainsProcessesBriefly() {
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        smoothingFactor: 0.5,
+        visibilityGracePeriod: 5,
+        previewMinimumBytesPerSecond: 1_024
+    )
+    let firstCaptureTime = Date(timeIntervalSince1970: 5_000)
+    let secondCaptureTime = Date(timeIntervalSince1970: 5_001)
+    let thirdCaptureTime = Date(timeIntervalSince1970: 5_006)
+
+    store.consume(.snapshot(
+        LiveSnapshot(
+            capturedAt: firstCaptureTime,
+            totalDownloadBytesPerSecond: 2_000,
+            totalUploadBytesPerSecond: 0,
+            processes: [
+                ProcessUsage(pid: 41, name: "Safari", downloadBytesPerSecond: 2_000, uploadBytesPerSecond: 0, totalBytesPerSecond: 2_000, shareOfTotal: 1, lastSeen: firstCaptureTime)
+            ]
+        )
+    ))
+
+    #expect(store.displayedProcesses.map(\.name) == ["Safari"])
+    #expect(store.topFive.map(\.name) == ["Safari"])
+    #expect(store.displayedProcesses.first?.totalBytesPerSecond == 2_000)
+
+    store.consume(.snapshot(
+        LiveSnapshot(
+            capturedAt: secondCaptureTime,
+            totalDownloadBytesPerSecond: 0,
+            totalUploadBytesPerSecond: 0,
+            processes: []
+        )
+    ))
+
+    #expect(store.displayedProcesses.map(\.name) == ["Safari"])
+    #expect(store.displayedProcesses.first?.totalBytesPerSecond == 1_000)
+    #expect(store.displayedProcesses.first?.lastSeen == firstCaptureTime)
+    #expect(store.topFive.isEmpty)
+
+    store.consume(.snapshot(
+        LiveSnapshot(
+            capturedAt: thirdCaptureTime,
+            totalDownloadBytesPerSecond: 0,
+            totalUploadBytesPerSecond: 0,
+            processes: []
+        )
+    ))
+
+    #expect(store.displayedProcesses.isEmpty)
 }
 
 @Test
@@ -188,6 +244,30 @@ func captureServiceStopsAfterRepeatedStartupFailure() async throws {
     let events = await recorder.events
     #expect(events.contains(where: { if case .retrying = $0 { return true } else { return false } }))
     #expect(events.contains(where: { if case .failed(let message) = $0 { return message.contains("missing nettop") } else { return false } }))
+}
+
+@Test
+func statusPopoverPositioningStaysBelowMenuBarAndInsideScreen() {
+    let origin = StatusPopoverPositioning.origin(
+        anchorFrame: CGRect(x: 800, y: 1180, width: 24, height: 22),
+        popoverSize: CGSize(width: 360, height: 280),
+        visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 945)
+    )
+
+    #expect(origin.y == 657)
+    #expect(origin.x == 632)
+}
+
+@Test
+func statusPopoverPositioningClampsHorizontallyNearScreenEdge() {
+    let origin = StatusPopoverPositioning.origin(
+        anchorFrame: CGRect(x: 1490, y: 1180, width: 24, height: 22),
+        popoverSize: CGSize(width: 360, height: 280),
+        visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 945)
+    )
+
+    #expect(origin.x == 1144)
+    #expect(origin.y == 657)
 }
 
 private enum MockError: Error {

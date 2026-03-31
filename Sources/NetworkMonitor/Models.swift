@@ -104,7 +104,7 @@ struct NettopCSVStreamParser {
     }
 
     mutating func consume(line: String) -> [LiveSnapshot] {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = Self.sanitize(line)
         guard !trimmed.isEmpty else {
             return []
         }
@@ -192,6 +192,11 @@ struct NettopCSVStreamParser {
 
     private static func isHeader(_ line: String) -> Bool {
         line.hasPrefix("time,")
+    }
+
+    private static func sanitize(_ line: String) -> String {
+        let scalars = line.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
+        return String(String.UnicodeScalarView(scalars)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func parseUsage(from line: String) -> RawUsage? {

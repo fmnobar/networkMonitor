@@ -65,8 +65,8 @@ final class NettopProcessController: @unchecked Sendable {
 }
 
 struct ProcessNettopStreamProducer: NettopStreamProducing {
-    var executableURL: URL = URL(fileURLWithPath: "/usr/bin/nettop")
-    var arguments: [String] = ["-P", "-L", "0", "-d", "-x", "-n", "-s", "1"]
+    var executableURL: URL = URL(fileURLWithPath: "/usr/bin/script")
+    var arguments: [String] = ["-q", "-F", "/dev/null", "/usr/bin/nettop", "-P", "-L", "0", "-d", "-x", "-n", "-s", "1"]
 
     func makeStream() throws -> NettopStreamHandle {
         let controller = NettopProcessController(executableURL: executableURL, arguments: arguments)

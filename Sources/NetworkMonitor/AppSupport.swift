@@ -2,6 +2,26 @@ import AppKit
 import Combine
 import SwiftUI
 
+enum StatusPopoverPositioning {
+    static func origin(
+        anchorFrame: CGRect,
+        popoverSize: CGSize,
+        visibleFrame: CGRect,
+        margin: CGFloat = 8
+    ) -> CGPoint {
+        let minimumX = visibleFrame.minX + margin
+        let maximumX = max(minimumX, visibleFrame.maxX - popoverSize.width - margin)
+        let idealX = anchorFrame.midX - (popoverSize.width / 2)
+        let x = min(max(idealX, minimumX), maximumX)
+
+        let minimumY = visibleFrame.minY + margin
+        let maximumY = max(minimumY, visibleFrame.maxY - popoverSize.height - margin)
+        let y = min(maximumY, maximumY)
+
+        return CGPoint(x: x, y: y)
+    }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = TrafficDashboardStore()
@@ -116,7 +136,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var statusLabelCancellable: AnyCancellable?
     private var hoverTask: Task<Void, Never>?
     private var dismissTask: Task<Void, Never>?
-    private var trackingArea: NSTrackingArea?
+    private var hoverObservationTimer: Timer?
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
     private var interactionState: InteractionState = .idle
@@ -136,21 +156,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         configureStatusItem()
         configurePopover()
         bindStore()
-    }
-
-    @objc
-    func mouseEntered(with event: NSEvent) {
-        transition(to: .hoverPending)
-        scheduleHoverPopover()
-    }
-
-    @objc
-    func mouseExited(with event: NSEvent) {
-        if popover.isShown {
-            scheduleDismissCheck()
-        } else {
-            transition(to: .idle)
-        }
     }
 
     @objc
@@ -201,17 +206,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.action = #selector(handleStatusItemAction(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.toolTip = "Network Monitor"
-
-        let trackingArea = NSTrackingArea(
-            rect: .zero,
-            options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited],
-            owner: self,
-            userInfo: nil
-        )
-        button.addTrackingArea(trackingArea)
-        self.trackingArea = trackingArea
-
         updateButtonTitle(with: store.statusLabelText)
+        startHoverObservation()
     }
 
     private func configurePopover() {
@@ -251,6 +247,55 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.attributedTitle = NSAttributedString(string: text, attributes: attributes)
     }
 
+    private func startHoverObservation() {
+        hoverObservationTimer?.invalidate()
+
+        let timer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.observeHoverState()
+            }
+        }
+        hoverObservationTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func observeHoverState() {
+        switch interactionState {
+        case .contextMenuVisible, .openingWindow:
+            return
+        case .idle, .hoverPending, .popoverVisible, .dismissPending:
+            break
+        }
+
+        switch currentHoverRegion() {
+        case .statusItem:
+            cancelDismissTask()
+            if popover.isShown {
+                transition(to: .popoverVisible)
+            } else if interactionState == .idle {
+                transition(to: .hoverPending)
+                scheduleHoverPopover()
+            }
+
+        case .popover:
+            guard popover.isShown else {
+                return
+            }
+            cancelDismissTask()
+            transition(to: .popoverVisible)
+
+        case .outside:
+            if popover.isShown {
+                if interactionState != .dismissPending {
+                    scheduleDismissCheck()
+                }
+            } else if interactionState == .hoverPending {
+                cancelHoverTask()
+                transition(to: .idle)
+            }
+        }
+    }
+
     private func scheduleHoverPopover() {
         cancelHoverTask()
         hoverTask = Task { @MainActor [weak self] in
@@ -278,9 +323,37 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return
         }
 
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
+        positionPopoverWindow()
+        DispatchQueue.main.async { [weak self] in
+            self?.positionPopoverWindow()
+        }
         transition(to: .popoverVisible)
         installEventMonitors()
+    }
+
+    private func positionPopoverWindow() {
+        guard
+            let popoverWindow = popover.contentViewController?.view.window,
+            let buttonFrame = statusItemButtonFrame()
+        else {
+            return
+        }
+
+        let screenFrame = popoverWindow.screen?.visibleFrame
+            ?? statusItem.button?.window?.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? .zero
+        guard screenFrame != .zero else {
+            return
+        }
+
+        let origin = StatusPopoverPositioning.origin(
+            anchorFrame: buttonFrame,
+            popoverSize: popoverWindow.frame.size,
+            visibleFrame: screenFrame
+        )
+        popoverWindow.setFrameOrigin(origin)
     }
 
     private func showContextMenu(with event: NSEvent) {
@@ -340,7 +413,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return
         }
 
-        let hoverRegion = currentHoverRegion(for: event.locationInWindow == .zero ? NSEvent.mouseLocation : NSEvent.mouseLocation)
+        let hoverRegion = currentHoverRegion()
         switch hoverRegion {
         case .statusItem, .popover:
             cancelDismissTask()
