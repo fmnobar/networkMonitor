@@ -42,45 +42,9 @@ struct PreviewPopoverView: View {
                 )
             }
 
-            Group {
-                switch store.viewState {
-                case .starting:
-                    previewPlaceholder(title: "Starting capture…", subtitle: "Launching nettop and waiting for the first sample.")
-                case .stopped(nil), .failed(nil, _), .retrying(nil, _):
-                    previewPlaceholder(title: emptyStateTitle, subtitle: store.stateMessage ?? "Capture has no live data yet.")
-                case .live, .noTraffic, .retrying, .stalled, .failed, .stopped:
-                    if !store.topFive.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Top 5 Consumers")
-                                .font(.subheadline.weight(.semibold))
-
-                            ForEach(store.topFive) { usage in
-                                HStack(alignment: .top, spacing: 10) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(usage.name)
-                                            .font(.body.weight(.medium))
-                                            .lineLimit(1)
-                                        Text("PID \(usage.pid)")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    VStack(alignment: .trailing, spacing: 2) {
-                                        Text("↓ \(NetworkFormatting.rate(usage.downloadBytesPerSecond))")
-                                        Text("↑ \(NetworkFormatting.rate(usage.uploadBytesPerSecond))")
-                                        Text("Σ \(NetworkFormatting.rate(usage.totalBytesPerSecond))")
-                                            .foregroundStyle(.primary)
-                                    }
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    } else {
-                        previewPlaceholder(title: emptyStateTitle, subtitle: store.stateMessage ?? "No process reported network usage in the latest interval.")
-                    }
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(previewRows.enumerated()), id: \.offset) { _, usage in
+                    previewRow(usage: usage)
                 }
             }
 
@@ -95,6 +59,12 @@ struct PreviewPopoverView: View {
         }
         .padding(16)
         .frame(width: 360)
+    }
+
+    private var previewRows: [ProcessUsage?] {
+        let visibleRows = store.topFive.map(Optional.some)
+        let fillerRows = Array<ProcessUsage?>(repeating: nil, count: max(0, 5 - visibleRows.count))
+        return visibleRows + fillerRows
     }
 
     private var bannerTitle: String {
@@ -116,35 +86,37 @@ struct PreviewPopoverView: View {
         }
     }
 
-    private var emptyStateTitle: String {
-        switch store.viewState {
-        case .starting:
-            return "Starting capture…"
-        case .retrying:
-            return "Retrying capture"
-        case .failed:
-            return "Capture unavailable"
-        case .stopped:
-            return "Capture stopped"
-        case .stalled:
-            return "Live data stalled"
-        case .noTraffic, .live:
-            return "No active traffic"
-        }
-    }
-
     @ViewBuilder
-    private func previewPlaceholder(title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+    private func previewRow(usage: ProcessUsage?) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            if let usage {
+                Text(usage.name)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+            } else {
+                Text(" ")
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+                    .hidden()
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                if let usage {
+                    Text("↓ \(NetworkFormatting.rate(usage.downloadBytesPerSecond))")
+                    Text("↑ \(NetworkFormatting.rate(usage.uploadBytesPerSecond))")
+                } else {
+                    Text(" ")
+                        .hidden()
+                    Text(" ")
+                        .hidden()
+                }
+            }
+            .font(.system(.caption, design: .monospaced))
+            .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
     }
 
     private func statusBanner(title: String, message: String) -> some View {
