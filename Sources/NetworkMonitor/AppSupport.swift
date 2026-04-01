@@ -235,7 +235,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.target = self
         button.action = #selector(handleStatusItemAction(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        button.toolTip = "Network Monitor"
         button.lineBreakMode = .byClipping
         updateButtonTitle(with: store.statusLabelText)
         startHoverObservation()
