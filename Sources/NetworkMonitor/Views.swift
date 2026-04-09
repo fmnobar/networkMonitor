@@ -52,12 +52,15 @@ struct PreviewPanelView: View {
 
             Divider()
 
-            HStack {
+            HStack(spacing: 10) {
                 Button("Open Dashboard", action: onOpen)
+                    .frame(maxWidth: .infinity)
                     .keyboardShortcut(.defaultAction)
-                Spacer()
+
                 Button("Restart Capture", action: onRestart)
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.bordered)
         }
         .padding(16)
         .frame(

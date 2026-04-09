@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 enum StatusPreviewLayout {
-    static let panelSize = CGSize(width: 360, height: 360)
+    static let panelSize = CGSize(width: 392, height: 460)
     static let margin: CGFloat = 8
     static let statusItemReferenceText = "↓ 99.9T ↑ 99.9T"
 }
@@ -375,6 +375,7 @@ final class StatusItemController: NSObject {
     private var screenParametersObserver: Any?
     private var interactionModel = StatusPreviewInteractionModel()
     private var lastPreviewAnchorFrame: NSRect?
+    private let shouldShowPreviewOnLaunch = CommandLine.arguments.contains("--debug-show-preview")
 
     init(
         store: TrafficDashboardStore,
@@ -393,6 +394,7 @@ final class StatusItemController: NSObject {
         bindStore()
         startHoverObservation()
         observeScreenChanges()
+        showPreviewOnLaunchIfRequested()
     }
 
     @objc
@@ -461,6 +463,17 @@ final class StatusItemController: NSObject {
             Task { @MainActor [weak self] in
                 self?.repositionPreviewIfNeeded(force: true)
             }
+        }
+    }
+
+    private func showPreviewOnLaunchIfRequested() {
+        guard shouldShowPreviewOnLaunch else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            self?.showPreviewPanel()
         }
     }
 
