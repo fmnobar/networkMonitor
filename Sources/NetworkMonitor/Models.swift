@@ -49,6 +49,27 @@ enum NetworkFormatting {
         "\(ByteCountFormatter.string(fromByteCount: Int64(bytesPerSecond), countStyle: .binary))/s"
     }
 
+    static func compactRate(_ bytesPerSecond: UInt64) -> String {
+        let units = ["B", "K", "M", "G", "T"]
+        var value = Double(bytesPerSecond)
+        var unitIndex = 0
+
+        while value >= 1024, unitIndex < units.count - 1 {
+            value /= 1024
+            unitIndex += 1
+        }
+
+        if unitIndex == 0 {
+            return "\(Int(value.rounded()))\(units[unitIndex])"
+        }
+
+        if value >= 100 {
+            return "\(Int(value.rounded()))\(units[unitIndex])"
+        }
+
+        return String(format: "%.1f%@", value, units[unitIndex])
+    }
+
     static func percentage(_ value: Double) -> String {
         "\(Int((value * 100).rounded()))%"
     }
@@ -61,12 +82,8 @@ enum NetworkFormatting {
         date.formatted(date: .omitted, time: .shortened)
     }
 
-    static func statusLabel(for snapshot: LiveSnapshot, suffix: String? = nil) -> String {
-        let base = "↓ \(rate(snapshot.totalDownloadBytesPerSecond)) ↑ \(rate(snapshot.totalUploadBytesPerSecond))"
-        guard let suffix, !suffix.isEmpty else {
-            return base
-        }
-        return "\(base) [\(suffix)]"
+    static func statusLabel(for snapshot: LiveSnapshot) -> String {
+        "↓ \(compactRate(snapshot.totalDownloadBytesPerSecond)) ↑ \(compactRate(snapshot.totalUploadBytesPerSecond))"
     }
 
     static func retryDescription(_ status: CaptureRecoveryState) -> String {

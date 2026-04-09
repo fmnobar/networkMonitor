@@ -179,7 +179,7 @@ final class TrafficDashboardStore: ObservableObject {
         recoveryState = restartStatus
         if let snapshot {
             viewState = .retrying(snapshot: snapshot, status: restartStatus)
-            statusLabelText = NetworkFormatting.statusLabel(for: snapshot, suffix: "retry")
+            statusLabelText = NetworkFormatting.statusLabel(for: snapshot)
         } else {
             viewState = .starting
             statusLabelText = "Starting…"
@@ -213,7 +213,7 @@ final class TrafficDashboardStore: ObservableObject {
             recoveryState = status
             if let snapshot {
                 viewState = .retrying(snapshot: snapshot, status: status)
-                statusLabelText = NetworkFormatting.statusLabel(for: snapshot, suffix: "retry")
+                statusLabelText = NetworkFormatting.statusLabel(for: snapshot)
             } else {
                 viewState = .retrying(snapshot: nil, status: status)
                 statusLabelText = "Retrying…"
@@ -223,7 +223,7 @@ final class TrafficDashboardStore: ObservableObject {
             recoveryState = nil
             viewState = .failed(snapshot: snapshot, message: message)
             if let snapshot {
-                statusLabelText = NetworkFormatting.statusLabel(for: snapshot, suffix: "failed")
+                statusLabelText = NetworkFormatting.statusLabel(for: snapshot)
             } else {
                 statusLabelText = "Unavailable"
             }
@@ -232,7 +232,7 @@ final class TrafficDashboardStore: ObservableObject {
             recoveryState = nil
             viewState = .stopped(snapshot: snapshot)
             if let snapshot {
-                statusLabelText = NetworkFormatting.statusLabel(for: snapshot, suffix: "stopped")
+                statusLabelText = NetworkFormatting.statusLabel(for: snapshot)
             } else {
                 statusLabelText = "Stopped"
             }
@@ -261,7 +261,7 @@ final class TrafficDashboardStore: ObservableObject {
 
         let message = "No new sample arrived after \(Int(stallThreshold)) seconds. Last good sample was at \(NetworkFormatting.snapshotTime(snapshot.capturedAt))."
         viewState = .stalled(snapshot: snapshot, message: message)
-        statusLabelText = NetworkFormatting.statusLabel(for: snapshot, suffix: "stalled")
+        statusLabelText = NetworkFormatting.statusLabel(for: snapshot)
     }
 
     private func stabilizedSnapshot(from rawSnapshot: LiveSnapshot) -> LiveSnapshot {

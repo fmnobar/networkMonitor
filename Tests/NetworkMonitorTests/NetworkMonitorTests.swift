@@ -49,6 +49,22 @@ func parserAggregatesDuplicateProcessesAndComputesShares() {
     #expect(snapshot?.processes.first?.shareOfTotal == Double(2500) / Double(2700))
 }
 
+@Test
+func compactStatusLabelUsesBoundedRateFormatting() {
+    let snapshot = LiveSnapshot(
+        capturedAt: Date(timeIntervalSince1970: 2_500),
+        totalDownloadBytesPerSecond: 125_829_120,
+        totalUploadBytesPerSecond: 1_536,
+        processes: []
+    )
+
+    let label = NetworkFormatting.statusLabel(for: snapshot)
+
+    #expect(label == "↓ 120M ↑ 1.5K")
+    #expect(!label.contains("/s"))
+    #expect(label.count <= StatusPreviewLayout.statusItemReferenceText.count)
+}
+
 @MainActor
 @Test
 func storeFiltersAndSortsDisplayedProcesses() {
@@ -172,6 +188,23 @@ func storeSmoothsBurstTrafficAndRetainsProcessesBriefly() {
 }
 
 @Test
+func previewInteractionStaysVisibleAcrossHoverTransitions() {
+    var model = StatusPreviewInteractionModel()
+
+    #expect(model.observe(region: .statusItem) == [.scheduleHoverOpen])
+    #expect(model.state == .hoverPending)
+    #expect(model.hoverDelayElapsed(currentRegion: .statusItem) == [.showPreview])
+    #expect(model.state == .previewVisible)
+    #expect(model.observe(region: .outside) == [.scheduleDismiss])
+    #expect(model.state == .dismissPending)
+    #expect(model.observe(region: .previewPanel) == [.cancelDismiss])
+    #expect(model.state == .previewVisible)
+    #expect(model.observe(region: .outside) == [.scheduleDismiss])
+    #expect(model.dismissDelayElapsed(currentRegion: .outside) == [.closePreview])
+    #expect(model.state == .idle)
+}
+
+@Test
 func captureServiceRestartsAfterFailure() async throws {
     let header = "time,,interface,state,bytes_in,bytes_out,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,"
     let producer = MockProducer(
@@ -248,6 +281,53 @@ func captureServiceStopsAfterRepeatedStartupFailure() async throws {
 }
 
 @Test
+func captureServiceRestartWaitsForPreviousStopToFinish() async throws {
+    let recorder = LockedRecorder()
+    let producer = RestartSerializationProducer(recorder: recorder)
+    let service = NettopCaptureService(
+        producer: producer,
+        restartDelayNanoseconds: 0,
+        sleep: { _ in }
+    )
+
+    await service.start()
+    try await Task.sleep(nanoseconds: 80_000_000)
+    await service.restart()
+    try await Task.sleep(nanoseconds: 80_000_000)
+
+    let calls = recorder.snapshot()
+    #expect(Array(calls.prefix(4)) == ["start1", "stop1-start", "stop1-end", "start2"])
+
+    await service.stop()
+}
+
+@Test
+func processTerminationPlanEscalatesWhenGracefulShutdownFails() async {
+    let recorder = LockedRecorder()
+    let waitPlan = WaitPlan([false, false, false])
+
+    await ProcessTerminationPlan.stop(
+        terminate: {
+            recorder.record("terminate")
+        },
+        interrupt: {
+            recorder.record("interrupt")
+        },
+        forceKill: {
+            recorder.record("kill")
+        },
+        waitForExitWithin: { _ in
+            await waitPlan.next()
+        },
+        waitForExit: {
+            recorder.record("wait")
+        }
+    )
+
+    #expect(recorder.snapshot() == ["terminate", "interrupt", "kill", "wait"])
+}
+
+@Test
 func statusPopoverPositioningStaysBelowMenuBarAndInsideScreen() {
     let origin = StatusPopoverPositioning.origin(
         anchorFrame: CGRect(x: 800, y: 1180, width: 24, height: 22),
@@ -285,6 +365,91 @@ func statusPopoverPlacementFrameHonorsSafeAreaInsets() {
 private enum MockError: Error {
     case boom
     case stopAfterSnapshot
+}
+
+private actor WaitPlan {
+    private var responses: [Bool]
+
+    init(_ responses: [Bool]) {
+        self.responses = responses
+    }
+
+    func next() -> Bool {
+        if responses.isEmpty {
+            return true
+        }
+        return responses.removeFirst()
+    }
+}
+
+private final class LockedRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [String] = []
+
+    func record(_ value: String) {
+        lock.lock()
+        calls.append(value)
+        lock.unlock()
+    }
+
+    func snapshot() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return calls
+    }
+}
+
+private final class StreamContinuationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: AsyncThrowingStream<String, Error>.Continuation?
+
+    func set(_ continuation: AsyncThrowingStream<String, Error>.Continuation) {
+        lock.lock()
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func finish() {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+
+        continuation?.finish()
+    }
+}
+
+private final class RestartSerializationProducer: NettopStreamProducing, @unchecked Sendable {
+    private let recorder: LockedRecorder
+    private let lock = NSLock()
+    private var attempt = 0
+
+    init(recorder: LockedRecorder) {
+        self.recorder = recorder
+    }
+
+    func makeStream() throws -> NettopStreamHandle {
+        lock.lock()
+        attempt += 1
+        let currentAttempt = attempt
+        lock.unlock()
+
+        recorder.record("start\(currentAttempt)")
+        let continuationBox = StreamContinuationBox()
+        let stream = AsyncThrowingStream<String, Error> { continuation in
+            continuationBox.set(continuation)
+        }
+
+        return NettopStreamHandle(
+            lines: stream,
+            stop: { [recorder] in
+                recorder.record("stop\(currentAttempt)-start")
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                continuationBox.finish()
+                recorder.record("stop\(currentAttempt)-end")
+            }
+        )
+    }
 }
 
 private final class MockProducer: NettopStreamProducing, @unchecked Sendable {

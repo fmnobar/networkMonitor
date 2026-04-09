@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct PreviewPopoverView: View {
+struct PreviewPanelView: View {
     @ObservedObject var store: TrafficDashboardStore
     let onOpen: () -> Void
     let onRestart: () -> Void
@@ -48,6 +48,8 @@ struct PreviewPopoverView: View {
                 }
             }
 
+            Spacer(minLength: 0)
+
             Divider()
 
             HStack {
@@ -58,7 +60,16 @@ struct PreviewPopoverView: View {
             }
         }
         .padding(16)
-        .frame(width: 360)
+        .frame(
+            width: StatusPreviewLayout.panelSize.width,
+            height: StatusPreviewLayout.panelSize.height,
+            alignment: .topLeading
+        )
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.2), lineWidth: 1)
+        )
     }
 
     private var previewRows: [ProcessUsage?] {

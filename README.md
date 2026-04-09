@@ -44,8 +44,10 @@ swift test
 
 - Launch the packaged app with `./scripts/build_app.sh --open`.
 - Confirm the app appears in the macOS menu bar without a Dock icon.
-- Hover the menu bar item and confirm the top-5 preview opens.
-- Move the pointer from the status item into the popover and confirm it stays open.
+- Confirm the menu bar label stays compact and shows only `↓ <rate> ↑ <rate>`.
+- Hover the menu bar item and confirm the fixed five-row preview panel opens below the menu bar.
+- Move the pointer from the status item into the preview panel and confirm it stays open.
+- Keep the preview open for at least 20 seconds and confirm it does not jitter or drift under the notch.
 - Click the status item and confirm the dashboard window opens or focuses.
 - Right-click the status item and confirm `Open`, `Restart Capture`, and `Quit` are available.
 - Trigger visible traffic and confirm the ranking changes within a few seconds.

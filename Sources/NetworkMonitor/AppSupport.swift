@@ -2,6 +2,12 @@ import AppKit
 import Combine
 import SwiftUI
 
+enum StatusPreviewLayout {
+    static let panelSize = CGSize(width: 360, height: 360)
+    static let margin: CGFloat = 8
+    static let statusItemReferenceText = "↓ 99.9T ↑ 99.9T"
+}
+
 enum StatusPopoverPositioning {
     static func placementFrame(
         screenFrame: CGRect,
@@ -18,10 +24,10 @@ enum StatusPopoverPositioning {
             width: screenFrame.width - safeAreaInsets.left - safeAreaInsets.right,
             height: screenFrame.height - safeAreaInsets.top - safeAreaInsets.bottom
         )
-        let minX: CGFloat = Swift.max(visibleFrame.minX, safeFrame.minX)
-        let minY: CGFloat = Swift.max(visibleFrame.minY, safeFrame.minY)
-        let maxX: CGFloat = Swift.min(visibleFrame.maxX, safeFrame.maxX)
-        let maxY: CGFloat = Swift.min(visibleFrame.maxY, safeFrame.maxY)
+        let minX = Swift.max(visibleFrame.minX, safeFrame.minX)
+        let minY = Swift.max(visibleFrame.minY, safeFrame.minY)
+        let maxX = Swift.min(visibleFrame.maxX, safeFrame.maxX)
+        let maxY = Swift.min(visibleFrame.maxY, safeFrame.maxY)
 
         guard maxX >= minX, maxY >= minY else {
             return visibleFrame
@@ -34,7 +40,7 @@ enum StatusPopoverPositioning {
         anchorFrame: CGRect,
         popoverSize: CGSize,
         placementFrame: CGRect,
-        margin: CGFloat = 8
+        margin: CGFloat = StatusPreviewLayout.margin
     ) -> CGPoint {
         let minimumX = placementFrame.minX + margin
         let maximumX = max(minimumX, placementFrame.maxX - popoverSize.width - margin)
@@ -45,6 +51,212 @@ enum StatusPopoverPositioning {
         let y = max(minimumY, placementFrame.maxY - popoverSize.height - margin)
 
         return CGPoint(x: x, y: y)
+    }
+}
+
+enum StatusPreviewInteractionState: Equatable {
+    case idle
+    case hoverPending
+    case previewVisible
+    case dismissPending
+    case contextMenuVisible
+}
+
+enum StatusPreviewHoverRegion: Equatable {
+    case statusItem
+    case previewPanel
+    case outside
+}
+
+enum StatusPreviewInteractionAction: Equatable {
+    case scheduleHoverOpen
+    case cancelHoverOpen
+    case scheduleDismiss
+    case cancelDismiss
+    case showPreview
+    case closePreview
+    case openDashboard
+    case showContextMenu
+}
+
+struct StatusPreviewInteractionModel {
+    private(set) var state: StatusPreviewInteractionState = .idle
+
+    mutating func observe(region: StatusPreviewHoverRegion) -> [StatusPreviewInteractionAction] {
+        switch state {
+        case .contextMenuVisible:
+            return []
+
+        case .idle:
+            guard region == .statusItem else {
+                return []
+            }
+            state = .hoverPending
+            return [.scheduleHoverOpen]
+
+        case .hoverPending:
+            guard region == .outside else {
+                return []
+            }
+            state = .idle
+            return [.cancelHoverOpen]
+
+        case .previewVisible:
+            guard region == .outside else {
+                return []
+            }
+            state = .dismissPending
+            return [.scheduleDismiss]
+
+        case .dismissPending:
+            guard region != .outside else {
+                return []
+            }
+            state = .previewVisible
+            return [.cancelDismiss]
+        }
+    }
+
+    mutating func hoverDelayElapsed(currentRegion: StatusPreviewHoverRegion) -> [StatusPreviewInteractionAction] {
+        guard state == .hoverPending else {
+            return []
+        }
+
+        guard currentRegion == .statusItem else {
+            state = .idle
+            return []
+        }
+
+        state = .previewVisible
+        return [.showPreview]
+    }
+
+    mutating func dismissDelayElapsed(currentRegion: StatusPreviewHoverRegion) -> [StatusPreviewInteractionAction] {
+        guard state == .dismissPending else {
+            return []
+        }
+
+        guard currentRegion == .outside else {
+            state = .previewVisible
+            return []
+        }
+
+        state = .idle
+        return [.closePreview]
+    }
+
+    mutating func leftClick() -> [StatusPreviewInteractionAction] {
+        state = .idle
+        return [.cancelHoverOpen, .cancelDismiss, .closePreview, .openDashboard]
+    }
+
+    mutating func rightClick() -> [StatusPreviewInteractionAction] {
+        state = .contextMenuVisible
+        return [.cancelHoverOpen, .cancelDismiss, .closePreview, .showContextMenu]
+    }
+
+    mutating func forceClose() {
+        state = .idle
+    }
+
+    mutating func contextMenuDidClose() {
+        state = .idle
+    }
+}
+
+final class StatusPreviewPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
+@MainActor
+final class StatusPreviewPanelController {
+    private let panel: StatusPreviewPanel
+
+    init(
+        store: TrafficDashboardStore,
+        onOpen: @escaping () -> Void,
+        onRestart: @escaping () -> Void
+    ) {
+        let contentRect = NSRect(origin: .zero, size: StatusPreviewLayout.panelSize)
+        let panel = StatusPreviewPanel(
+            contentRect: contentRect,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+
+        panel.isFloatingPanel = true
+        panel.level = .statusBar
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.hidesOnDeactivate = false
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.isMovable = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.worksWhenModal = true
+        panel.animationBehavior = .utilityWindow
+        panel.isRestorable = false
+
+        panel.contentViewController = NSHostingController(
+            rootView: PreviewPanelView(
+                store: store,
+                onOpen: onOpen,
+                onRestart: onRestart
+            )
+        )
+        panel.setContentSize(StatusPreviewLayout.panelSize)
+
+        self.panel = panel
+    }
+
+    var isVisible: Bool {
+        panel.isVisible
+    }
+
+    var frame: NSRect? {
+        panel.isVisible ? panel.frame : nil
+    }
+
+    func show(anchorFrame: NSRect, screen: NSScreen) {
+        reposition(anchorFrame: anchorFrame, screen: screen)
+        guard !panel.isVisible else {
+            return
+        }
+
+        NetworkMonitorDiagnostics.menuBar("Opening preview panel.")
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    func reposition(anchorFrame: NSRect, screen: NSScreen) {
+        let placementFrame = StatusPopoverPositioning.placementFrame(
+            screenFrame: screen.frame,
+            visibleFrame: screen.visibleFrame,
+            safeAreaInsets: {
+                if #available(macOS 12.0, *) {
+                    return screen.safeAreaInsets
+                } else {
+                    return nil
+                }
+            }()
+        )
+
+        let origin = StatusPopoverPositioning.origin(
+            anchorFrame: anchorFrame,
+            popoverSize: StatusPreviewLayout.panelSize,
+            placementFrame: placementFrame
+        )
+        panel.setFrame(NSRect(origin: origin, size: StatusPreviewLayout.panelSize), display: panel.isVisible)
+    }
+
+    func close() {
+        guard panel.isVisible else {
+            return
+        }
+
+        NetworkMonitorDiagnostics.menuBar("Closing preview panel.")
+        panel.orderOut(nil)
     }
 }
 
@@ -129,28 +341,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return
         }
 
+        NetworkMonitorDiagnostics.window("Opening dashboard window.")
         NSApplication.shared.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
 }
 
 @MainActor
-final class StatusItemController: NSObject, NSPopoverDelegate {
-    private enum InteractionState: Equatable {
-        case idle
-        case hoverPending
-        case popoverVisible
-        case dismissPending
-        case contextMenuVisible
-        case openingWindow
-    }
-
-    private enum HoverRegion {
-        case statusItem
-        case popover
-        case outside
-    }
-
+final class StatusItemController: NSObject {
     private let store: TrafficDashboardStore
     private let onOpen: () -> Void
     private let onRestart: () -> Void
@@ -158,16 +356,25 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let statusItemWidth: CGFloat
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let popover = NSPopover()
+    private lazy var previewPanelController = StatusPreviewPanelController(
+        store: store,
+        onOpen: { [weak self] in
+            self?.openDashboard()
+        },
+        onRestart: { [weak self] in
+            self?.restartCapture()
+        }
+    )
 
     private var statusLabelCancellable: AnyCancellable?
-    private var popoverLayoutCancellable: AnyCancellable?
     private var hoverTask: Task<Void, Never>?
     private var dismissTask: Task<Void, Never>?
     private var hoverObservationTimer: Timer?
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
-    private var interactionState: InteractionState = .idle
+    private var screenParametersObserver: Any?
+    private var interactionModel = StatusPreviewInteractionModel()
+    private var lastPreviewAnchorFrame: NSRect?
 
     init(
         store: TrafficDashboardStore,
@@ -183,25 +390,23 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         super.init()
 
         configureStatusItem()
-        configurePopover()
         bindStore()
+        startHoverObservation()
+        observeScreenChanges()
     }
 
     @objc
     private func handleStatusItemAction(_ sender: NSStatusBarButton) {
-        cancelPendingTasks()
         guard let event = NSApp.currentEvent else {
-            openDashboard()
+            execute(interactionModel.leftClick())
             return
         }
 
         switch event.type {
         case .rightMouseUp:
-            transition(to: .contextMenuVisible)
-            showContextMenu(with: event)
+            execute(interactionModel.rightClick(), contextMenuEvent: event)
         case .leftMouseUp:
-            transition(to: .openingWindow)
-            openDashboard()
+            execute(interactionModel.leftClick())
         default:
             break
         }
@@ -209,16 +414,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     @objc
     private func openDashboard() {
-        closePopover()
+        interactionModel.forceClose()
+        closePreviewPanel()
         onOpen()
-        transition(to: .idle)
     }
 
     @objc
     private func restartCapture() {
-        closePopover()
+        interactionModel.forceClose()
+        closePreviewPanel()
         onRestart()
-        transition(to: .idle)
     }
 
     @objc
@@ -237,24 +442,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.lineBreakMode = .byClipping
         updateButtonTitle(with: store.statusLabelText)
-        startHoverObservation()
-    }
-
-    private func configurePopover() {
-        popover.behavior = .applicationDefined
-        popover.animates = true
-        popover.delegate = self
-        popover.contentViewController = NSHostingController(
-            rootView: PreviewPopoverView(
-                store: store,
-                onOpen: { [weak self] in
-                    self?.openDashboard()
-                },
-                onRestart: { [weak self] in
-                    self?.restartCapture()
-                }
-            )
-        )
     }
 
     private func bindStore() {
@@ -263,17 +450,18 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             .sink { [weak self] statusText in
                 self?.updateButtonTitle(with: statusText)
             }
+    }
 
-        popoverLayoutCancellable = store.objectWillChange
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                guard let self, self.popover.isShown else {
-                    return
-                }
-                DispatchQueue.main.async { [weak self] in
-                    self?.positionPopoverWindow()
-                }
+    private func observeScreenChanges() {
+        screenParametersObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.repositionPreviewIfNeeded(force: true)
             }
+        }
     }
 
     private func updateButtonTitle(with text: String) {
@@ -293,7 +481,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         ]
         let reference = NSAttributedString(
-            string: "↓ 999.9 MB/s ↑ 999.9 MB/s",
+            string: StatusPreviewLayout.statusItemReferenceText,
             attributes: attributes
         )
         return ceil(reference.size().width) + 16
@@ -312,117 +500,110 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func observeHoverState() {
-        switch interactionState {
-        case .contextMenuVisible, .openingWindow:
-            return
-        case .idle, .hoverPending, .popoverVisible, .dismissPending:
-            break
+        if previewPanelController.isVisible {
+            repositionPreviewIfNeeded()
         }
 
-        switch currentHoverRegion() {
-        case .statusItem:
-            cancelDismissTask()
-            if popover.isShown {
-                transition(to: .popoverVisible)
-            } else if interactionState == .idle {
-                transition(to: .hoverPending)
-                scheduleHoverPopover()
-            }
+        let actions = interactionModel.observe(region: currentHoverRegion())
+        execute(actions)
+    }
 
-        case .popover:
-            guard popover.isShown else {
-                return
-            }
-            cancelDismissTask()
-            transition(to: .popoverVisible)
+    private func execute(_ actions: [StatusPreviewInteractionAction], contextMenuEvent: NSEvent? = nil) {
+        for action in actions {
+            switch action {
+            case .scheduleHoverOpen:
+                scheduleHoverOpen()
 
-        case .outside:
-            if popover.isShown {
-                if interactionState != .dismissPending {
-                    scheduleDismissCheck()
-                }
-            } else if interactionState == .hoverPending {
+            case .cancelHoverOpen:
                 cancelHoverTask()
-                transition(to: .idle)
+
+            case .scheduleDismiss:
+                scheduleDismissCheck()
+
+            case .cancelDismiss:
+                cancelDismissTask()
+
+            case .showPreview:
+                showPreviewPanel()
+
+            case .closePreview:
+                closePreviewPanel()
+
+            case .openDashboard:
+                openDashboard()
+
+            case .showContextMenu:
+                guard let contextMenuEvent else {
+                    continue
+                }
+                showContextMenu(with: contextMenuEvent)
             }
         }
     }
 
-    private func scheduleHoverPopover() {
+    private func scheduleHoverOpen() {
         cancelHoverTask()
         hoverTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 180_000_000)
-            guard let self, self.interactionState == .hoverPending else {
+            guard let self else {
                 return
             }
-            guard self.currentHoverRegion() == .statusItem else {
-                self.transition(to: .idle)
-                return
-            }
-            self.showHoverPopover()
+
+            let actions = self.interactionModel.hoverDelayElapsed(currentRegion: self.currentHoverRegion())
+            self.execute(actions)
         }
     }
 
-    private func showHoverPopover() {
-        guard let button = statusItem.button else {
+    private func scheduleDismissCheck() {
+        cancelDismissTask()
+        dismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard let self else {
+                return
+            }
+
+            let actions = self.interactionModel.dismissDelayElapsed(currentRegion: self.currentHoverRegion())
+            self.execute(actions)
+        }
+    }
+
+    private func showPreviewPanel() {
+        guard
+            let buttonFrame = statusItemButtonFrame(),
+            let screen = screenForAnchorFrame(buttonFrame)
+        else {
+            interactionModel.forceClose()
             return
         }
 
         cancelDismissTask()
-
-        guard !popover.isShown else {
-            transition(to: .popoverVisible)
-            return
-        }
-
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
-        positionPopoverWindow()
-        DispatchQueue.main.async { [weak self] in
-            self?.positionPopoverWindow()
-        }
-        transition(to: .popoverVisible)
+        previewPanelController.show(anchorFrame: buttonFrame, screen: screen)
         installEventMonitors()
+        lastPreviewAnchorFrame = buttonFrame
     }
 
-    private func positionPopoverWindow() {
+    private func repositionPreviewIfNeeded(force: Bool = false) {
         guard
-            let popoverWindow = popover.contentViewController?.view.window,
-            let buttonFrame = statusItemButtonFrame()
+            previewPanelController.isVisible,
+            let buttonFrame = statusItemButtonFrame(),
+            let screen = screenForAnchorFrame(buttonFrame)
         else {
             return
         }
 
-        let screen = popoverWindow.screen
-            ?? statusItem.button?.window?.screen
-            ?? NSScreen.main
-        guard let screen else {
+        guard force || lastPreviewAnchorFrame != buttonFrame else {
             return
         }
 
-        let placementFrame = StatusPopoverPositioning.placementFrame(
-            screenFrame: screen.frame,
-            visibleFrame: screen.visibleFrame,
-            safeAreaInsets: {
-                if #available(macOS 12.0, *) {
-                    return screen.safeAreaInsets
-                } else {
-                    return nil
-                }
-            }()
-        )
-
-        let origin = StatusPopoverPositioning.origin(
-            anchorFrame: buttonFrame,
-            popoverSize: popoverWindow.frame.size,
-            placementFrame: placementFrame
-        )
-        popoverWindow.setFrameOrigin(origin)
+        previewPanelController.reposition(anchorFrame: buttonFrame, screen: screen)
+        lastPreviewAnchorFrame = buttonFrame
     }
 
     private func showContextMenu(with event: NSEvent) {
-        closePopover()
+        closePreviewPanel()
 
         guard let button = statusItem.button else {
+            interactionModel.contextMenuDidClose()
             return
         }
 
@@ -436,8 +617,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             item.target = self
         }
 
+        NetworkMonitorDiagnostics.menuBar("Opening status item context menu.")
         NSMenu.popUpContextMenu(menu, with: event, for: button)
-        transition(to: .idle)
+        interactionModel.contextMenuDidClose()
     }
 
     private func installEventMonitors() {
@@ -445,16 +627,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return
         }
 
-        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown, .rightMouseDown]) { [weak self] event in
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             Task { @MainActor [weak self] in
-                self?.handlePointerEvent(event, forceDismiss: event.type == .leftMouseDown || event.type == .rightMouseDown)
+                self?.handlePointerEvent(forceDismiss: true)
             }
             return event
         }
 
-        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown, .rightMouseDown]) { [weak self] event in
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.handlePointerEvent(event, forceDismiss: event.type == .leftMouseDown || event.type == .rightMouseDown)
+                self?.handlePointerEvent(forceDismiss: true)
             }
         }
     }
@@ -471,66 +653,47 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
     }
 
-    private func handlePointerEvent(_ event: NSEvent, forceDismiss: Bool) {
-        guard popover.isShown else {
+    private func handlePointerEvent(forceDismiss: Bool) {
+        guard previewPanelController.isVisible, forceDismiss else {
             return
         }
 
-        let hoverRegion = currentHoverRegion()
-        switch hoverRegion {
-        case .statusItem, .popover:
-            cancelDismissTask()
-            transition(to: .popoverVisible)
-        case .outside:
-            if forceDismiss {
-                closePopover()
-            } else {
-                scheduleDismissCheck()
-            }
-        }
-    }
-
-    private func closePopover() {
-        cancelPendingTasks()
-        if popover.isShown {
-            popover.performClose(nil)
-        }
-        removeEventMonitors()
-    }
-
-    private func scheduleDismissCheck() {
-        guard popover.isShown else {
-            transition(to: .idle)
+        guard currentHoverRegion() == .outside else {
             return
         }
 
-        transition(to: .dismissPending)
+        interactionModel.forceClose()
+        closePreviewPanel()
+    }
+
+    private func closePreviewPanel() {
+        cancelHoverTask()
         cancelDismissTask()
-        dismissTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            guard let self, self.interactionState == .dismissPending else {
-                return
-            }
-
-            if self.currentHoverRegion() == .outside {
-                self.closePopover()
-                self.transition(to: .idle)
-            } else {
-                self.transition(to: .popoverVisible)
-            }
-        }
+        previewPanelController.close()
+        removeEventMonitors()
+        lastPreviewAnchorFrame = nil
     }
 
-    private func currentHoverRegion(for screenLocation: NSPoint = NSEvent.mouseLocation) -> HoverRegion {
+    private func currentHoverRegion(for screenLocation: NSPoint = NSEvent.mouseLocation) -> StatusPreviewHoverRegion {
         if let buttonFrame = statusItemButtonFrame(), buttonFrame.contains(screenLocation) {
             return .statusItem
         }
 
-        if let popoverFrame = popover.contentViewController?.view.window?.frame, popoverFrame.contains(screenLocation) {
-            return .popover
+        if let panelFrame = previewPanelController.frame, panelFrame.contains(screenLocation) {
+            return .previewPanel
         }
 
         return .outside
+    }
+
+    private func screenForAnchorFrame(_ anchorFrame: NSRect) -> NSScreen? {
+        if let buttonScreen = statusItem.button?.window?.screen {
+            return buttonScreen
+        }
+
+        return NSScreen.screens.first { screen in
+            screen.frame.intersects(anchorFrame) || screen.frame.contains(anchorFrame.center)
+        } ?? NSScreen.main
     }
 
     private func statusItemButtonFrame() -> NSRect? {
@@ -542,11 +705,6 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return window.convertToScreen(rectInWindow)
     }
 
-    private func cancelPendingTasks() {
-        cancelHoverTask()
-        cancelDismissTask()
-    }
-
     private func cancelHoverTask() {
         hoverTask?.cancel()
         hoverTask = nil
@@ -556,18 +714,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         dismissTask?.cancel()
         dismissTask = nil
     }
+}
 
-    private func transition(to state: InteractionState) {
-        guard interactionState != state else {
-            return
-        }
-        interactionState = state
-        NetworkMonitorDiagnostics.debug("Status item interaction state -> \(String(describing: state))")
-    }
-
-    func popoverDidClose(_ notification: Notification) {
-        cancelDismissTask()
-        removeEventMonitors()
-        transition(to: .idle)
+private extension CGRect {
+    var center: CGPoint {
+        CGPoint(x: midX, y: midY)
     }
 }

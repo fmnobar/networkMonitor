@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 protocol NettopStreamProducing: Sendable {
@@ -6,7 +7,7 @@ protocol NettopStreamProducing: Sendable {
 
 struct NettopStreamHandle: Sendable {
     let lines: AsyncThrowingStream<String, Error>
-    let stop: @Sendable () -> Void
+    let stop: @Sendable () async -> Void
 }
 
 enum NettopCaptureError: LocalizedError {
@@ -28,16 +29,54 @@ enum NettopCaptureError: LocalizedError {
     }
 }
 
+enum ProcessTerminationPlan {
+    static let gracefulShutdownNanoseconds: UInt64 = 500_000_000
+
+    static func stop(
+        terminate: @escaping @Sendable () -> Void,
+        interrupt: @escaping @Sendable () -> Void,
+        forceKill: @escaping @Sendable () -> Void,
+        waitForExitWithin: @escaping @Sendable (UInt64) async -> Bool,
+        waitForExit: @escaping @Sendable () async -> Void
+    ) async {
+        terminate()
+        if await waitForExitWithin(gracefulShutdownNanoseconds) {
+            return
+        }
+
+        NetworkMonitorDiagnostics.captureError("Capture process ignored terminate(); sending interrupt.")
+        interrupt()
+        if await waitForExitWithin(gracefulShutdownNanoseconds) {
+            return
+        }
+
+        forceKill()
+        if await waitForExitWithin(gracefulShutdownNanoseconds) {
+            return
+        }
+
+        await waitForExit()
+    }
+}
+
 final class NettopProcessController: @unchecked Sendable {
     let process = Process()
     let standardOutputPipe = Pipe()
     let standardErrorPipe = Pipe()
+
+    private let stateLock = NSLock()
+    private var exitContinuations: [CheckedContinuation<Void, Never>] = []
+    private var didExit = false
+    private var stopTask: Task<Void, Never>?
 
     init(executableURL: URL, arguments: [String]) {
         process.executableURL = executableURL
         process.arguments = arguments
         process.standardOutput = standardOutputPipe
         process.standardError = standardErrorPipe
+        process.terminationHandler = { [weak self] _ in
+            self?.markExited()
+        }
     }
 
     func start() throws {
@@ -48,19 +87,138 @@ final class NettopProcessController: @unchecked Sendable {
         }
     }
 
-    func stop() {
-        if process.isRunning {
-            process.terminate()
-        }
-    }
+    func stop() async {
+        let task = withStateLock { () -> Task<Void, Never> in
+            if let stopTask {
+                return stopTask
+            }
 
-    func waitForExit() {
-        process.waitUntilExit()
+            let newTask = Task { [weak self] in
+                guard let self else {
+                    return
+                }
+                await self.performStopSequence()
+            }
+            stopTask = newTask
+            return newTask
+        }
+        await task.value
     }
 
     func collectStandardError() -> String {
         let data = standardErrorPipe.fileHandleForReading.readDataToEndOfFile()
         return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func waitForExit() async {
+        if !process.isRunning {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            stateLock.lock()
+            if didExit || !process.isRunning {
+                stateLock.unlock()
+                continuation.resume()
+                return
+            }
+
+            exitContinuations.append(continuation)
+            stateLock.unlock()
+        }
+    }
+
+    private func performStopSequence() async {
+        defer {
+            withStateLock {
+                stopTask = nil
+            }
+        }
+
+        guard process.processIdentifier != 0 || process.isRunning else {
+            return
+        }
+
+        await ProcessTerminationPlan.stop(
+            terminate: { [weak self] in
+                guard let self, self.process.isRunning else {
+                    return
+                }
+                self.process.terminate()
+            },
+            interrupt: { [weak self] in
+                guard let self, self.process.isRunning else {
+                    return
+                }
+                self.process.interrupt()
+            },
+            forceKill: { [weak self] in
+                guard let self else {
+                    return
+                }
+
+                let pid = self.process.processIdentifier
+                guard pid > 0 else {
+                    return
+                }
+
+                NetworkMonitorDiagnostics.captureError("Capture process ignored interrupt(); force killing pid \(pid).")
+                Darwin.kill(pid, SIGKILL)
+            },
+            waitForExitWithin: { [weak self] timeoutNanoseconds in
+                guard let self else {
+                    return true
+                }
+                return await self.waitForExit(within: timeoutNanoseconds)
+            },
+            waitForExit: { [weak self] in
+                await self?.waitForExit()
+            }
+        )
+    }
+
+    private func waitForExit(within timeoutNanoseconds: UInt64) async -> Bool {
+        if !process.isRunning {
+            return true
+        }
+
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask { [weak self] in
+                guard let self else {
+                    return true
+                }
+                await self.waitForExit()
+                return true
+            }
+
+            group.addTask {
+                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                return false
+            }
+
+            let didExit = await group.next() ?? true
+            group.cancelAll()
+            return didExit
+        }
+    }
+
+    private func markExited() {
+        let continuations = withStateLock { () -> [CheckedContinuation<Void, Never>] in
+            didExit = true
+            let continuations = exitContinuations
+            exitContinuations.removeAll(keepingCapacity: false)
+            return continuations
+        }
+
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+
+    private func withStateLock<T>(_ body: () -> T) -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return body()
     }
 }
 
@@ -82,7 +240,7 @@ struct ProcessNettopStreamProducer: NettopStreamProducing {
                         continuation.yield(line)
                     }
 
-                    controller.waitForExit()
+                    await controller.waitForExit()
                     let errorOutput = controller.collectStandardError()
 
                     if Task.isCancelled || controller.process.terminationStatus == 0 {
@@ -99,14 +257,16 @@ struct ProcessNettopStreamProducer: NettopStreamProducing {
 
             continuation.onTermination = { _ in
                 readerTask.cancel()
-                controller.stop()
+                Task {
+                    await controller.stop()
+                }
             }
         }
 
         return NettopStreamHandle(
             lines: stream,
             stop: {
-                controller.stop()
+                await controller.stop()
             }
         )
     }
@@ -126,7 +286,7 @@ actor NettopCaptureService {
     private let now: NowFunction
 
     private var runnerTask: Task<Void, Never>?
-    private var currentStopHandler: (@Sendable () -> Void)?
+    private var currentStopHandler: (@Sendable () async -> Void)?
     private var stopRequested = false
     private var consecutiveFailureCount = 0
     private var lastSuccessfulCaptureAt: Date?
@@ -160,25 +320,23 @@ actor NettopCaptureService {
         stopRequested = false
         consecutiveFailureCount = 0
         continuation.yield(.starting)
+        NetworkMonitorDiagnostics.capture("Starting capture loop.")
         runnerTask = Task {
             await self.runLoop()
         }
     }
 
-    func stop() {
-        stopRequested = true
-        currentStopHandler?()
-        currentStopHandler = nil
-        runnerTask?.cancel()
-        runnerTask = nil
-        continuation.yield(.stopped)
+    func stop() async {
+        await requestStop(emitStopped: true)
     }
 
-    func restart() {
-        stop()
+    func restart() async {
+        NetworkMonitorDiagnostics.capture("Restart requested.")
+        await requestStop(emitStopped: false)
         stopRequested = false
         consecutiveFailureCount = 0
         continuation.yield(.starting)
+        NetworkMonitorDiagnostics.capture("Restarting capture loop.")
         runnerTask = Task {
             await self.runLoop()
         }
@@ -207,7 +365,7 @@ actor NettopCaptureService {
                             emittedSnapshotThisAttempt = true
                             consecutiveFailureCount = 0
                             lastSuccessfulCaptureAt = snapshot.capturedAt
-                            NetworkMonitorDiagnostics.debug("Received snapshot with \(snapshot.processes.count) active processes.")
+                            NetworkMonitorDiagnostics.capture("Received snapshot with \(snapshot.processes.count) active processes.")
                             continuation.yield(.snapshot(snapshot))
                         }
                     }
@@ -251,12 +409,12 @@ actor NettopCaptureService {
                 )
 
                 if shouldStopAfter(error: error, emittedSnapshotThisAttempt: emittedSnapshotThisAttempt) {
-                    NetworkMonitorDiagnostics.error("Capture failed permanently: \(error.localizedDescription)")
+                    NetworkMonitorDiagnostics.captureError("Capture failed permanently: \(error.localizedDescription)")
                     continuation.yield(.failed(error.localizedDescription))
                     break
                 }
 
-                NetworkMonitorDiagnostics.error("Capture will retry after error: \(error.localizedDescription)")
+                NetworkMonitorDiagnostics.captureError("Capture will retry after error: \(error.localizedDescription)")
                 continuation.yield(.retrying(recovery))
                 await sleep(restartDelayNanoseconds)
 
@@ -266,6 +424,30 @@ actor NettopCaptureService {
 
                 continuation.yield(.starting)
             }
+        }
+    }
+
+    private func requestStop(emitStopped: Bool) async {
+        stopRequested = true
+
+        let stopHandler = currentStopHandler
+        currentStopHandler = nil
+
+        let runner = runnerTask
+        runnerTask = nil
+        runner?.cancel()
+
+        if let stopHandler {
+            await stopHandler()
+        }
+
+        if let runner {
+            await runner.value
+        }
+
+        if emitStopped {
+            NetworkMonitorDiagnostics.capture("Capture stopped.")
+            continuation.yield(.stopped)
         }
     }
 
