@@ -11,9 +11,28 @@ final class TrafficDashboardStore: ObservableObject {
         var lastActiveAt: Date
     }
 
+    private enum CapturePhase {
+        case starting
+        case ready
+        case retrying(CaptureRecoveryState)
+        case stalled(String)
+        case failed(String)
+        case stopped
+    }
+
     @Published private(set) var viewState: DashboardViewState = .starting
     @Published private(set) var snapshot: LiveSnapshot?
     @Published private(set) var statusLabelText = "Starting…"
+    @Published var selectedDisplayMode: TrafficDisplayMode = .live {
+        didSet {
+            refreshPresentation()
+        }
+    }
+    @Published var selectedAverageWindow: AverageWindow = .fifteenSeconds {
+        didSet {
+            refreshPresentation()
+        }
+    }
     @Published var searchText = ""
     @Published var sortOrder: [KeyPathComparator<ProcessUsage>] = [
         KeyPathComparator(\ProcessUsage.totalBytesPerSecond, order: .reverse)
@@ -28,7 +47,10 @@ final class TrafficDashboardStore: ObservableObject {
     private var eventTask: Task<Void, Never>?
     private var stallMonitorTask: Task<Void, Never>?
     private var recoveryState: CaptureRecoveryState?
+    private var capturePhase: CapturePhase = .starting
     private var stabilizedProcesses: [Int: StabilizedProcessState] = [:]
+    private var liveSnapshot: LiveSnapshot?
+    private var rawSnapshotHistory: [LiveSnapshot] = []
     private(set) var lastSuccessfulCaptureAt: Date?
 
     init(
@@ -83,6 +105,33 @@ final class TrafficDashboardStore: ObservableObject {
         NetworkFormatting.rate(snapshot?.totalUploadBytesPerSecond ?? 0)
     }
 
+    var displayModeSummaryText: String {
+        switch selectedDisplayMode {
+        case .live:
+            return "Near real-time (~4s smoothing)"
+        case .average:
+            return "Averaged over the last \(selectedAverageWindow.title)"
+        }
+    }
+
+    var dashboardSubtitleText: String {
+        switch selectedDisplayMode {
+        case .live:
+            return "Near real-time per-process bandwidth from nettop"
+        case .average:
+            return "Per-process bandwidth averaged over the last \(selectedAverageWindow.title)"
+        }
+    }
+
+    var previewTitleText: String {
+        switch selectedDisplayMode {
+        case .live:
+            return "Live Network Usage"
+        case .average:
+            return "Average Network Usage"
+        }
+    }
+
     var snapshotTimeText: String? {
         guard let snapshot else {
             return nil
@@ -104,7 +153,12 @@ final class TrafficDashboardStore: ObservableObject {
         case .live:
             return nil
         case .noTraffic:
-            return "No process reported network activity in the latest interval."
+            switch selectedDisplayMode {
+            case .live:
+                return "No process reported network activity in the latest interval."
+            case .average:
+                return "No process reported network activity in the selected average window."
+            }
         case let .retrying(_, status):
             return NetworkFormatting.retryDescription(status)
         case let .stalled(_, message):
@@ -177,10 +231,11 @@ final class TrafficDashboardStore: ObservableObject {
             lastSuccessfulCaptureAt: lastSuccessfulCaptureAt
         )
         recoveryState = restartStatus
-        if let snapshot {
-            viewState = .retrying(snapshot: snapshot, status: restartStatus)
-            statusLabelText = NetworkFormatting.statusLabel(for: snapshot)
+        if snapshot != nil {
+            capturePhase = .retrying(restartStatus)
+            refreshPresentation()
         } else {
+            capturePhase = .starting
             viewState = .starting
             statusLabelText = "Starting…"
         }
@@ -193,27 +248,25 @@ final class TrafficDashboardStore: ObservableObject {
         switch event {
         case .starting:
             if snapshot == nil && recoveryState == nil {
+                capturePhase = .starting
                 viewState = .starting
                 statusLabelText = "Starting…"
             }
 
-        case let .snapshot(snapshot):
-            let stabilizedSnapshot = stabilizedSnapshot(from: snapshot)
-            self.snapshot = stabilizedSnapshot
+        case let .snapshot(rawSnapshot):
+            appendToSnapshotHistory(rawSnapshot)
+            let stabilizedSnapshot = stabilizedSnapshot(from: rawSnapshot)
+            liveSnapshot = stabilizedSnapshot
             recoveryState = nil
-            lastSuccessfulCaptureAt = snapshot.capturedAt
-            if stabilizedSnapshot.processes.isEmpty {
-                viewState = .noTraffic(stabilizedSnapshot)
-            } else {
-                viewState = .live(stabilizedSnapshot)
-            }
-            statusLabelText = NetworkFormatting.statusLabel(for: stabilizedSnapshot)
+            lastSuccessfulCaptureAt = rawSnapshot.capturedAt
+            capturePhase = .ready
+            refreshPresentation()
 
         case let .retrying(status):
             recoveryState = status
-            if let snapshot {
-                viewState = .retrying(snapshot: snapshot, status: status)
-                statusLabelText = NetworkFormatting.statusLabel(for: snapshot)
+            capturePhase = .retrying(status)
+            if snapshot != nil {
+                refreshPresentation()
             } else {
                 viewState = .retrying(snapshot: nil, status: status)
                 statusLabelText = "Retrying…"
@@ -221,19 +274,21 @@ final class TrafficDashboardStore: ObservableObject {
 
         case let .failed(message):
             recoveryState = nil
-            viewState = .failed(snapshot: snapshot, message: message)
-            if let snapshot {
-                statusLabelText = NetworkFormatting.statusLabel(for: snapshot)
+            capturePhase = .failed(message)
+            if snapshot != nil {
+                refreshPresentation()
             } else {
+                viewState = .failed(snapshot: nil, message: message)
                 statusLabelText = "Unavailable"
             }
 
         case .stopped:
             recoveryState = nil
-            viewState = .stopped(snapshot: snapshot)
-            if let snapshot {
-                statusLabelText = NetworkFormatting.statusLabel(for: snapshot)
+            capturePhase = .stopped
+            if snapshot != nil {
+                refreshPresentation()
             } else {
+                viewState = .stopped(snapshot: nil)
                 statusLabelText = "Stopped"
             }
         }
@@ -260,8 +315,8 @@ final class TrafficDashboardStore: ObservableObject {
         }
 
         let message = "No new sample arrived after \(Int(stallThreshold)) seconds. Last good sample was at \(NetworkFormatting.snapshotTime(snapshot.capturedAt))."
-        viewState = .stalled(snapshot: snapshot, message: message)
-        statusLabelText = NetworkFormatting.statusLabel(for: snapshot)
+        capturePhase = .stalled(message)
+        refreshPresentation()
     }
 
     private func stabilizedSnapshot(from rawSnapshot: LiveSnapshot) -> LiveSnapshot {
@@ -367,5 +422,175 @@ final class TrafficDashboardStore: ObservableObject {
         }
 
         return (smoothingFactor * next) + ((1 - smoothingFactor) * previous)
+    }
+
+    private func appendToSnapshotHistory(_ rawSnapshot: LiveSnapshot) {
+        rawSnapshotHistory.append(rawSnapshot)
+
+        let oldestAllowedDate = rawSnapshot.capturedAt.addingTimeInterval(-AverageWindow.thirtySeconds.duration)
+        rawSnapshotHistory.removeAll { $0.capturedAt < oldestAllowedDate }
+    }
+
+    private func refreshPresentation() {
+        let presentedSnapshot = currentPresentedSnapshot()
+        snapshot = presentedSnapshot
+
+        switch capturePhase {
+        case .starting:
+            if presentedSnapshot == nil {
+                viewState = .starting
+                statusLabelText = "Starting…"
+            } else {
+                applyReadyState(for: presentedSnapshot)
+            }
+
+        case .ready:
+            applyReadyState(for: presentedSnapshot)
+
+        case let .retrying(status):
+            viewState = .retrying(snapshot: presentedSnapshot, status: status)
+            if let presentedSnapshot {
+                statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot)
+            } else {
+                statusLabelText = "Retrying…"
+            }
+
+        case let .stalled(message):
+            guard let presentedSnapshot else {
+                viewState = .starting
+                statusLabelText = "Starting…"
+                return
+            }
+            viewState = .stalled(snapshot: presentedSnapshot, message: message)
+            statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot)
+
+        case let .failed(message):
+            viewState = .failed(snapshot: presentedSnapshot, message: message)
+            if let presentedSnapshot {
+                statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot)
+            } else {
+                statusLabelText = "Unavailable"
+            }
+
+        case .stopped:
+            viewState = .stopped(snapshot: presentedSnapshot)
+            if let presentedSnapshot {
+                statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot)
+            } else {
+                statusLabelText = "Stopped"
+            }
+        }
+    }
+
+    private func applyReadyState(for presentedSnapshot: LiveSnapshot?) {
+        guard let presentedSnapshot else {
+            viewState = .starting
+            statusLabelText = "Starting…"
+            return
+        }
+
+        if presentedSnapshot.processes.isEmpty {
+            viewState = .noTraffic(presentedSnapshot)
+        } else {
+            viewState = .live(presentedSnapshot)
+        }
+        statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot)
+    }
+
+    private func currentPresentedSnapshot() -> LiveSnapshot? {
+        switch selectedDisplayMode {
+        case .live:
+            return liveSnapshot
+        case .average:
+            return averagedSnapshot(for: selectedAverageWindow)
+        }
+    }
+
+    private func averagedSnapshot(for window: AverageWindow) -> LiveSnapshot? {
+        guard let latestSnapshot = rawSnapshotHistory.last else {
+            return nil
+        }
+
+        let cutoff = latestSnapshot.capturedAt.addingTimeInterval(-window.duration)
+        let snapshotsInWindow = rawSnapshotHistory.filter { $0.capturedAt >= cutoff }
+        guard !snapshotsInWindow.isEmpty else {
+            return nil
+        }
+
+        struct AggregateState {
+            var name: String
+            var downloadSum: UInt64
+            var uploadSum: UInt64
+            var lastSeen: Date
+        }
+
+        var aggregateByPID: [Int: AggregateState] = [:]
+        for snapshot in snapshotsInWindow {
+            for process in snapshot.processes {
+                if let existing = aggregateByPID[process.pid] {
+                    aggregateByPID[process.pid] = AggregateState(
+                        name: process.name,
+                        downloadSum: existing.downloadSum + process.downloadBytesPerSecond,
+                        uploadSum: existing.uploadSum + process.uploadBytesPerSecond,
+                        lastSeen: max(existing.lastSeen, process.lastSeen)
+                    )
+                } else {
+                    aggregateByPID[process.pid] = AggregateState(
+                        name: process.name,
+                        downloadSum: process.downloadBytesPerSecond,
+                        uploadSum: process.uploadBytesPerSecond,
+                        lastSeen: process.lastSeen
+                    )
+                }
+            }
+        }
+
+        let sampleCount = UInt64(snapshotsInWindow.count)
+        let averagedProcesses = aggregateByPID.map { pid, aggregate -> ProcessUsage in
+            let averageDownload = UInt64((Double(aggregate.downloadSum) / Double(sampleCount)).rounded())
+            let averageUpload = UInt64((Double(aggregate.uploadSum) / Double(sampleCount)).rounded())
+            let total = averageDownload + averageUpload
+            return ProcessUsage(
+                pid: pid,
+                name: aggregate.name,
+                downloadBytesPerSecond: averageDownload,
+                uploadBytesPerSecond: averageUpload,
+                totalBytesPerSecond: total,
+                shareOfTotal: 0,
+                lastSeen: aggregate.lastSeen
+            )
+        }
+        .filter { $0.totalBytesPerSecond > 0 }
+
+        let totalDownload = averagedProcesses.reduce(UInt64.zero) { $0 + $1.downloadBytesPerSecond }
+        let totalUpload = averagedProcesses.reduce(UInt64.zero) { $0 + $1.uploadBytesPerSecond }
+        let totalBandwidth = totalDownload + totalUpload
+
+        let rankedProcesses = averagedProcesses
+            .map { process in
+                let share = totalBandwidth > 0 ? Double(process.totalBytesPerSecond) / Double(totalBandwidth) : 0
+                return ProcessUsage(
+                    pid: process.pid,
+                    name: process.name,
+                    downloadBytesPerSecond: process.downloadBytesPerSecond,
+                    uploadBytesPerSecond: process.uploadBytesPerSecond,
+                    totalBytesPerSecond: process.totalBytesPerSecond,
+                    shareOfTotal: share,
+                    lastSeen: process.lastSeen
+                )
+            }
+            .sorted {
+                if $0.totalBytesPerSecond != $1.totalBytesPerSecond {
+                    return $0.totalBytesPerSecond > $1.totalBytesPerSecond
+                }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+
+        return LiveSnapshot(
+            capturedAt: latestSnapshot.capturedAt,
+            totalDownloadBytesPerSecond: totalDownload,
+            totalUploadBytesPerSecond: totalUpload,
+            processes: rankedProcesses
+        )
     }
 }

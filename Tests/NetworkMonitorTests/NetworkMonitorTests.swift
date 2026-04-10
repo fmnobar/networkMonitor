@@ -187,6 +187,75 @@ func storeSmoothsBurstTrafficAndRetainsProcessesBriefly() {
     #expect(store.displayedProcesses.isEmpty)
 }
 
+@MainActor
+@Test
+func storeSwitchesBetweenLiveAndAveragedModes() {
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        smoothingFactor: 0,
+        visibilityGracePeriod: 0,
+        previewMinimumBytesPerSecond: 0
+    )
+
+    let firstCaptureTime = Date(timeIntervalSince1970: 6_000)
+    let secondCaptureTime = Date(timeIntervalSince1970: 6_010)
+    let thirdCaptureTime = Date(timeIntervalSince1970: 6_020)
+
+    store.consume(.snapshot(
+        LiveSnapshot(
+            capturedAt: firstCaptureTime,
+            totalDownloadBytesPerSecond: 100,
+            totalUploadBytesPerSecond: 0,
+            processes: [
+                ProcessUsage(pid: 11, name: "Safari", downloadBytesPerSecond: 100, uploadBytesPerSecond: 0, totalBytesPerSecond: 100, shareOfTotal: 1, lastSeen: firstCaptureTime)
+            ]
+        )
+    ))
+
+    store.consume(.snapshot(
+        LiveSnapshot(
+            capturedAt: secondCaptureTime,
+            totalDownloadBytesPerSecond: 300,
+            totalUploadBytesPerSecond: 60,
+            processes: [
+                ProcessUsage(pid: 11, name: "Safari", downloadBytesPerSecond: 300, uploadBytesPerSecond: 60, totalBytesPerSecond: 360, shareOfTotal: 1, lastSeen: secondCaptureTime)
+            ]
+        )
+    ))
+
+    store.consume(.snapshot(
+        LiveSnapshot(
+            capturedAt: thirdCaptureTime,
+            totalDownloadBytesPerSecond: 500,
+            totalUploadBytesPerSecond: 150,
+            processes: [
+                ProcessUsage(pid: 11, name: "Safari", downloadBytesPerSecond: 500, uploadBytesPerSecond: 100, totalBytesPerSecond: 600, shareOfTotal: 0.75, lastSeen: thirdCaptureTime),
+                ProcessUsage(pid: 22, name: "Codex", downloadBytesPerSecond: 0, uploadBytesPerSecond: 50, totalBytesPerSecond: 50, shareOfTotal: 0.25, lastSeen: thirdCaptureTime)
+            ]
+        )
+    ))
+
+    #expect(store.selectedDisplayMode == .live)
+    #expect(store.snapshot?.totalDownloadBytesPerSecond == 500)
+    #expect(store.displayedProcesses.map(\.name) == ["Safari", "Codex"])
+
+    store.selectedDisplayMode = .average
+    #expect(store.snapshot?.capturedAt == thirdCaptureTime)
+    #expect(store.snapshot?.totalDownloadBytesPerSecond == 400)
+    #expect(store.snapshot?.totalUploadBytesPerSecond == 105)
+    #expect(store.displayedProcesses.map(\.name) == ["Safari", "Codex"])
+    #expect(store.displayedProcesses.first?.downloadBytesPerSecond == 400)
+    #expect(store.displayedProcesses.first?.uploadBytesPerSecond == 80)
+    #expect(store.displayedProcesses.last?.uploadBytesPerSecond == 25)
+
+    store.selectedAverageWindow = .thirtySeconds
+    #expect(store.snapshot?.totalDownloadBytesPerSecond == 300)
+    #expect(store.snapshot?.totalUploadBytesPerSecond == 70)
+    #expect(store.displayedProcesses.first?.downloadBytesPerSecond == 300)
+    #expect(store.displayedProcesses.first?.uploadBytesPerSecond == 53)
+    #expect(store.displayedProcesses.last?.uploadBytesPerSecond == 17)
+}
+
 @Test
 func previewInteractionStaysVisibleAcrossHoverTransitions() {
     var model = StatusPreviewInteractionModel()

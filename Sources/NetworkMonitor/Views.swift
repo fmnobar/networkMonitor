@@ -9,8 +9,11 @@ struct PreviewPanelView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Live Network Usage")
+                    Text(store.previewTitleText)
                         .font(.headline)
+                    Text(store.displayModeSummaryText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     if let snapshotTime = store.snapshotTimeText {
                         Text("Updated \(snapshotTime)")
                             .font(.caption)
@@ -32,6 +35,8 @@ struct PreviewPanelView: View {
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
             }
+
+            previewModeControls
 
             Divider()
 
@@ -73,6 +78,36 @@ struct PreviewPanelView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.2), lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private var previewModeControls: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Picker("Mode", selection: $store.selectedDisplayMode) {
+                ForEach(TrafficDisplayMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .labelsHidden()
+            .frame(width: 170)
+
+            if store.selectedDisplayMode == .average {
+                Picker("Average Window", selection: $store.selectedAverageWindow) {
+                    ForEach(AverageWindow.allCases) { window in
+                        Text(window.title).tag(window)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .labelsHidden()
+                .frame(width: 120)
+                .padding(.leading, 10)
+            }
+
+            Spacer(minLength: 0)
+        }
     }
 
     private var previewRows: [ProcessUsage?] {
@@ -183,7 +218,7 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Network Monitor")
                         .font(.system(size: 28, weight: .semibold))
-                    Text("Live per-process bandwidth from nettop")
+                    Text(store.dashboardSubtitleText)
                         .foregroundStyle(.secondary)
                 }
 
@@ -193,6 +228,32 @@ struct DashboardView: View {
                     metricCard(title: "Download", value: store.totalDownloadText)
                     metricCard(title: "Upload", value: store.totalUploadText)
                 }
+            }
+
+            HStack(spacing: 12) {
+                Picker("Mode", selection: $store.selectedDisplayMode) {
+                    ForEach(TrafficDisplayMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+
+                if store.selectedDisplayMode == .average {
+                    Picker("Average Window", selection: $store.selectedAverageWindow) {
+                        ForEach(AverageWindow.allCases) { window in
+                            Text(window.title).tag(window)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 150)
+                }
+
+                Text(store.displayModeSummaryText)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
             }
 
             HStack {
@@ -283,9 +344,9 @@ struct DashboardView: View {
         case .starting:
             return "Starting capture…"
         case .live:
-            return "Live traffic"
+            return store.selectedDisplayMode == .live ? "Live traffic" : "Average traffic"
         case .noTraffic:
-            return "No active traffic"
+            return store.selectedDisplayMode == .live ? "No active traffic" : "No traffic in selected average"
         case .retrying:
             return "Retrying capture"
         case .stalled:

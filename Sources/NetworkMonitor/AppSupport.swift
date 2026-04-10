@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 enum StatusPreviewLayout {
-    static let panelSize = CGSize(width: 392, height: 460)
+    static let panelSize = CGSize(width: 392, height: 520)
     static let margin: CGFloat = 8
     static let statusItemReferenceText = "↓ 99.9T ↑ 99.9T"
 }

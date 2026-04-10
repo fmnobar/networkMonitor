@@ -1,5 +1,40 @@
 import Foundation
 
+enum TrafficDisplayMode: String, CaseIterable, Identifiable {
+    case live
+    case average
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .live:
+            return "Live"
+        case .average:
+            return "Average"
+        }
+    }
+}
+
+enum AverageWindow: Int, CaseIterable, Identifiable {
+    case fifteenSeconds = 15
+    case thirtySeconds = 30
+
+    var id: Self { self }
+
+    var duration: TimeInterval {
+        TimeInterval(rawValue)
+    }
+
+    var title: String {
+        "\(rawValue)s"
+    }
+
+    var descriptiveTitle: String {
+        "\(rawValue)-second average"
+    }
+}
+
 struct ProcessUsage: Identifiable, Equatable, Sendable {
     let pid: Int
     let name: String
