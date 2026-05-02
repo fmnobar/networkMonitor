@@ -25,11 +25,17 @@ final class TrafficDashboardStore: ObservableObject {
     @Published private(set) var statusLabelText = "Starting…"
     @Published var selectedDisplayMode: TrafficDisplayMode = .live {
         didSet {
+            if preferences.defaultDisplayMode != selectedDisplayMode {
+                preferences.defaultDisplayMode = selectedDisplayMode
+            }
             refreshPresentation()
         }
     }
     @Published var selectedAverageWindow: AverageWindow = .fifteenSeconds {
         didSet {
+            if preferences.defaultAverageWindow != selectedAverageWindow {
+                preferences.defaultAverageWindow = selectedAverageWindow
+            }
             refreshPresentation()
         }
     }
@@ -39,13 +45,15 @@ final class TrafficDashboardStore: ObservableObject {
     ]
 
     private let captureService: NettopCaptureService
+    private let preferences: NetworkMonitorPreferences
     private let now: @Sendable () -> Date
     private let stallThreshold: TimeInterval
     private let smoothingFactor: Double
     private let visibilityGracePeriod: TimeInterval
-    private let previewMinimumBytesPerSecond: UInt64
+    private var previewMinimumBytesPerSecond: UInt64
     private var eventTask: Task<Void, Never>?
     private var stallMonitorTask: Task<Void, Never>?
+    private var preferenceCancellables: Set<AnyCancellable> = []
     private var recoveryState: CaptureRecoveryState?
     private var capturePhase: CapturePhase = .starting
     private var stabilizedProcesses: [Int: StabilizedProcessState] = [:]
@@ -55,18 +63,23 @@ final class TrafficDashboardStore: ObservableObject {
 
     init(
         captureService: NettopCaptureService = NettopCaptureService(),
+        preferences: NetworkMonitorPreferences = NetworkMonitorPreferences(),
         stallThreshold: TimeInterval = 8,
         smoothingFactor: Double = 0.4,
         visibilityGracePeriod: TimeInterval = 5,
-        previewMinimumBytesPerSecond: UInt64 = 1_024,
+        previewMinimumBytesPerSecond: UInt64? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.captureService = captureService
+        self.preferences = preferences
         self.stallThreshold = stallThreshold
         self.smoothingFactor = min(max(smoothingFactor, 0), 1)
         self.visibilityGracePeriod = visibilityGracePeriod
-        self.previewMinimumBytesPerSecond = previewMinimumBytesPerSecond
+        self.previewMinimumBytesPerSecond = previewMinimumBytesPerSecond ?? preferences.previewMinimumBytesPerSecond
         self.now = now
+        self.selectedDisplayMode = preferences.defaultDisplayMode
+        self.selectedAverageWindow = preferences.defaultAverageWindow
+        bindPreferences()
     }
 
     deinit {
@@ -115,7 +128,7 @@ final class TrafficDashboardStore: ObservableObject {
             return nil
         }
 
-        let thresholdText = NetworkFormatting.rate(previewMinimumBytesPerSecond)
+        let thresholdText = NetworkFormatting.rate(previewMinimumBytesPerSecond, unitStyle: preferences.rateUnitStyle)
         if activeRowCount == 0 {
             return "All visible traffic is below the \(thresholdText) preview threshold."
         }
@@ -141,15 +154,27 @@ final class TrafficDashboardStore: ObservableObject {
                 usage.name.lowercased().contains(query) || String(usage.pid).contains(query)
             }
         }
-        return filtered.sorted(using: sortOrder)
+        let visibleProcesses: [ProcessUsage]
+        switch preferences.dashboardProcessVisibility {
+        case .allActive:
+            visibleProcesses = filtered
+        case .abovePreviewThreshold:
+            visibleProcesses = filtered.filter { $0.totalBytesPerSecond >= previewMinimumBytesPerSecond }
+        }
+
+        return visibleProcesses.sorted(using: sortOrder)
     }
 
     var totalDownloadText: String {
-        NetworkFormatting.rate(snapshot?.totalDownloadBytesPerSecond ?? 0)
+        NetworkFormatting.rate(snapshot?.totalDownloadBytesPerSecond ?? 0, unitStyle: preferences.rateUnitStyle)
     }
 
     var totalUploadText: String {
-        NetworkFormatting.rate(snapshot?.totalUploadBytesPerSecond ?? 0)
+        NetworkFormatting.rate(snapshot?.totalUploadBytesPerSecond ?? 0, unitStyle: preferences.rateUnitStyle)
+    }
+
+    var rateUnitStyle: NetworkRateUnitStyle {
+        preferences.rateUnitStyle
     }
 
     var downloadTrend: TrafficTrendSeries {
@@ -380,6 +405,53 @@ final class TrafficDashboardStore: ObservableObject {
         refreshPresentation()
     }
 
+    private func bindPreferences() {
+        preferences.$defaultDisplayMode
+            .dropFirst()
+            .sink { [weak self] displayMode in
+                guard let self, self.selectedDisplayMode != displayMode else {
+                    return
+                }
+                self.selectedDisplayMode = displayMode
+            }
+            .store(in: &preferenceCancellables)
+
+        preferences.$defaultAverageWindow
+            .dropFirst()
+            .sink { [weak self] averageWindow in
+                guard let self, self.selectedAverageWindow != averageWindow else {
+                    return
+                }
+                self.selectedAverageWindow = averageWindow
+            }
+            .store(in: &preferenceCancellables)
+
+        preferences.$previewThreshold
+            .dropFirst()
+            .sink { [weak self] threshold in
+                guard let self else {
+                    return
+                }
+                self.previewMinimumBytesPerSecond = threshold.bytesPerSecond
+                self.refreshPresentation()
+            }
+            .store(in: &preferenceCancellables)
+
+        preferences.$rateUnitStyle
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.refreshPresentation()
+            }
+            .store(in: &preferenceCancellables)
+
+        preferences.$dashboardProcessVisibility
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.refreshPresentation()
+            }
+            .store(in: &preferenceCancellables)
+    }
+
     private func stabilizedSnapshot(from rawSnapshot: LiveSnapshot) -> LiveSnapshot {
         var nextStates: [Int: StabilizedProcessState] = [:]
         let activeProcessesByPID = Dictionary(uniqueKeysWithValues: rawSnapshot.processes.map { ($0.pid, $0) })
@@ -511,7 +583,7 @@ final class TrafficDashboardStore: ObservableObject {
         case let .retrying(status):
             viewState = .retrying(snapshot: presentedSnapshot, status: status)
             if let presentedSnapshot {
-                statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot)
+                statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot, unitStyle: preferences.rateUnitStyle)
             } else {
                 statusLabelText = "Retrying…"
             }
@@ -523,12 +595,12 @@ final class TrafficDashboardStore: ObservableObject {
                 return
             }
             viewState = .stalled(snapshot: presentedSnapshot, message: message)
-            statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot)
+            statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot, unitStyle: preferences.rateUnitStyle)
 
         case let .failed(message):
             viewState = .failed(snapshot: presentedSnapshot, message: message)
             if let presentedSnapshot {
-                statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot)
+                statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot, unitStyle: preferences.rateUnitStyle)
             } else {
                 statusLabelText = "Unavailable"
             }
@@ -536,7 +608,7 @@ final class TrafficDashboardStore: ObservableObject {
         case .stopped:
             viewState = .stopped(snapshot: presentedSnapshot)
             if let presentedSnapshot {
-                statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot)
+                statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot, unitStyle: preferences.rateUnitStyle)
             } else {
                 statusLabelText = "Stopped"
             }
@@ -555,7 +627,7 @@ final class TrafficDashboardStore: ObservableObject {
         } else {
             viewState = .live(presentedSnapshot)
         }
-        statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot)
+        statusLabelText = NetworkFormatting.statusLabel(for: presentedSnapshot, unitStyle: preferences.rateUnitStyle)
     }
 
     private func currentPresentedSnapshot() -> LiveSnapshot? {

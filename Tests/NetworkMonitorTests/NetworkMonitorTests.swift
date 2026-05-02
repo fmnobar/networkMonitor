@@ -74,6 +74,42 @@ func normalizedShareClampsToRenderableRange() {
     #expect(NetworkFormatting.normalizedShare(1.4) == 1)
 }
 
+@MainActor
+@Test
+func preferencesDefaultToCurrentPresentationBehavior() {
+    let defaults = isolatedUserDefaults()
+    let preferences = NetworkMonitorPreferences(userDefaults: defaults)
+
+    #expect(preferences.defaultDisplayMode == .live)
+    #expect(preferences.defaultAverageWindow == .fifteenSeconds)
+    #expect(preferences.previewThreshold == .oneKilobyte)
+    #expect(preferences.previewMinimumBytesPerSecond == 1_024)
+    #expect(preferences.rateUnitStyle == .binary)
+    #expect(preferences.dashboardProcessVisibility == .allActive)
+    #expect(NetworkFormatting.compactRate(1_536, unitStyle: preferences.rateUnitStyle) == "1.5K")
+}
+
+@MainActor
+@Test
+func preferencesPersistPresentationValues() {
+    let defaults = isolatedUserDefaults()
+    let preferences = NetworkMonitorPreferences(userDefaults: defaults)
+
+    preferences.defaultDisplayMode = .average
+    preferences.defaultAverageWindow = .oneMinute
+    preferences.previewThreshold = .tenKilobytes
+    preferences.rateUnitStyle = .decimal
+    preferences.dashboardProcessVisibility = .abovePreviewThreshold
+
+    let reloadedPreferences = NetworkMonitorPreferences(userDefaults: defaults)
+    #expect(reloadedPreferences.defaultDisplayMode == .average)
+    #expect(reloadedPreferences.defaultAverageWindow == .oneMinute)
+    #expect(reloadedPreferences.previewThreshold == .tenKilobytes)
+    #expect(reloadedPreferences.previewMinimumBytesPerSecond == 10_240)
+    #expect(reloadedPreferences.rateUnitStyle == .decimal)
+    #expect(reloadedPreferences.dashboardProcessVisibility == .abovePreviewThreshold)
+}
+
 @Test
 func trafficTrendSeriesHandlesEmptyHistoryAndInvalidNormalization() {
     let emptySeries = TrafficTrendSeries(snapshots: [], value: \.totalDownloadBytesPerSecond)
@@ -212,7 +248,10 @@ func dashboardManualRestartAvailabilityMatchesCaptureState() {
 @MainActor
 @Test
 func storeFiltersAndSortsDisplayedProcesses() {
-    let store = TrafficDashboardStore(captureService: NettopCaptureService(producer: MockProducer(scripts: [])))
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: testPreferences()
+    )
     let snapshot = LiveSnapshot(
         capturedAt: Date(timeIntervalSince1970: 3_000),
         totalDownloadBytesPerSecond: 900,
@@ -236,9 +275,70 @@ func storeFiltersAndSortsDisplayedProcesses() {
 
 @MainActor
 @Test
+func storeUsesPreferencePreviewThresholdForPreviewRows() {
+    let preferences = NetworkMonitorPreferences(userDefaults: isolatedUserDefaults())
+    preferences.previewThreshold = .tenKilobytes
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: preferences,
+        smoothingFactor: 0
+    )
+    let captureTime = Date(timeIntervalSince1970: 3_100)
+
+    store.consume(.snapshot(LiveSnapshot(
+        capturedAt: captureTime,
+        totalDownloadBytesPerSecond: 14_000,
+        totalUploadBytesPerSecond: 0,
+        processes: [
+            ProcessUsage(pid: 1, name: "Safari", downloadBytesPerSecond: 12_000, uploadBytesPerSecond: 0, totalBytesPerSecond: 12_000, shareOfTotal: 0.86, lastSeen: captureTime),
+            ProcessUsage(pid: 2, name: "Codex", downloadBytesPerSecond: 2_000, uploadBytesPerSecond: 0, totalBytesPerSecond: 2_000, shareOfTotal: 0.14, lastSeen: captureTime)
+        ]
+    )))
+
+    #expect(previewRowDescriptions(store.previewRows) == [
+        "active:Safari",
+        "low:Codex",
+        "empty",
+        "empty",
+        "empty"
+    ])
+    #expect(store.previewFilteringMessage == "Dimmed rows are below the 10 KB/s preview threshold.")
+}
+
+@MainActor
+@Test
+func storeDashboardVisibilityFilterFollowsPreferences() {
+    let preferences = NetworkMonitorPreferences(userDefaults: isolatedUserDefaults())
+    preferences.previewThreshold = .tenKilobytes
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: preferences,
+        smoothingFactor: 0
+    )
+    let captureTime = Date(timeIntervalSince1970: 3_175)
+
+    store.consume(.snapshot(LiveSnapshot(
+        capturedAt: captureTime,
+        totalDownloadBytesPerSecond: 14_000,
+        totalUploadBytesPerSecond: 0,
+        processes: [
+            ProcessUsage(pid: 1, name: "Safari", downloadBytesPerSecond: 12_000, uploadBytesPerSecond: 0, totalBytesPerSecond: 12_000, shareOfTotal: 0.86, lastSeen: captureTime),
+            ProcessUsage(pid: 2, name: "Codex", downloadBytesPerSecond: 2_000, uploadBytesPerSecond: 0, totalBytesPerSecond: 2_000, shareOfTotal: 0.14, lastSeen: captureTime)
+        ]
+    )))
+
+    #expect(store.displayedProcesses.map(\.name) == ["Safari", "Codex"])
+
+    preferences.dashboardProcessVisibility = .abovePreviewThreshold
+    #expect(store.displayedProcesses.map(\.name) == ["Safari"])
+}
+
+@MainActor
+@Test
 func previewRowsShowActiveThenLowTrafficThenEmptySlots() {
     let store = TrafficDashboardStore(
         captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: testPreferences(),
         smoothingFactor: 0,
         previewMinimumBytesPerSecond: 1_024
     )
@@ -272,6 +372,7 @@ func previewRowsShowActiveThenLowTrafficThenEmptySlots() {
 func previewRowsExplainAllLowTrafficWithoutLosingRows() {
     let store = TrafficDashboardStore(
         captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: testPreferences(),
         smoothingFactor: 0,
         previewMinimumBytesPerSecond: 1_024
     )
@@ -304,6 +405,7 @@ func previewRowsExplainAllLowTrafficWithoutLosingRows() {
 func previewRowsStayEmptyForStartingAndNoTrafficStates() {
     let store = TrafficDashboardStore(
         captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: testPreferences(),
         previewMinimumBytesPerSecond: 1_024
     )
 
@@ -328,6 +430,7 @@ func previewRowsStayEmptyForStartingAndNoTrafficStates() {
 func storePreservesSnapshotWhileRetryingAndMarksStalled() {
     let store = TrafficDashboardStore(
         captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: testPreferences(),
         stallThreshold: 3,
         now: { Date(timeIntervalSince1970: 4_000) }
     )
@@ -371,6 +474,7 @@ func storePreservesSnapshotWhileRetryingAndMarksStalled() {
 func storeSmoothsBurstTrafficAndRetainsProcessesBriefly() {
     let store = TrafficDashboardStore(
         captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: testPreferences(),
         smoothingFactor: 0.5,
         visibilityGracePeriod: 5,
         previewMinimumBytesPerSecond: 1_024
@@ -425,6 +529,7 @@ func storeSmoothsBurstTrafficAndRetainsProcessesBriefly() {
 func storeSwitchesBetweenLiveAndAveragedModes() {
     let store = TrafficDashboardStore(
         captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: testPreferences(),
         smoothingFactor: 0,
         visibilityGracePeriod: 0,
         previewMinimumBytesPerSecond: 0
@@ -494,6 +599,7 @@ func storeSwitchesBetweenLiveAndAveragedModes() {
 func storeAveragesOneMinuteWindowAndTrimsTrendHistory() {
     let store = TrafficDashboardStore(
         captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: testPreferences(),
         smoothingFactor: 0,
         visibilityGracePeriod: 0,
         previewMinimumBytesPerSecond: 0
@@ -520,6 +626,24 @@ func storeAveragesOneMinuteWindowAndTrimsTrendHistory() {
     #expect(store.downloadTrend.samples.map(\.bytesPerSecond) == [300, 500, 700])
     #expect(store.snapshot?.totalDownloadBytesPerSecond == 500)
     #expect(store.snapshot?.totalUploadBytesPerSecond == 250)
+}
+
+@MainActor
+@Test
+func storePersistsDisplayModeAndAverageWindowChanges() {
+    let defaults = isolatedUserDefaults()
+    let preferences = NetworkMonitorPreferences(userDefaults: defaults)
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        preferences: preferences
+    )
+
+    store.selectedDisplayMode = .average
+    store.selectedAverageWindow = .oneMinute
+
+    let reloadedPreferences = NetworkMonitorPreferences(userDefaults: defaults)
+    #expect(reloadedPreferences.defaultDisplayMode == .average)
+    #expect(reloadedPreferences.defaultAverageWindow == .oneMinute)
 }
 
 @Test
@@ -700,6 +824,18 @@ func statusPopoverPlacementFrameHonorsSafeAreaInsets() {
 private enum MockError: Error {
     case boom
     case stopAfterSnapshot
+}
+
+private func isolatedUserDefaults() -> UserDefaults {
+    let suiteName = "NetworkMonitorTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    return defaults
+}
+
+@MainActor
+private func testPreferences() -> NetworkMonitorPreferences {
+    NetworkMonitorPreferences(userDefaults: isolatedUserDefaults())
 }
 
 private func previewRowDescriptions(_ rows: [PreviewProcessRow]) -> [String] {

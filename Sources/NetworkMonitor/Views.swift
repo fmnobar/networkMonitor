@@ -160,8 +160,8 @@ struct PreviewPanelView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text("↓ \(NetworkFormatting.rate(usage.downloadBytesPerSecond))")
-                Text("↑ \(NetworkFormatting.rate(usage.uploadBytesPerSecond))")
+                Text("↓ \(NetworkFormatting.rate(usage.downloadBytesPerSecond, unitStyle: store.rateUnitStyle))")
+                Text("↑ \(NetworkFormatting.rate(usage.uploadBytesPerSecond, unitStyle: store.rateUnitStyle))")
             }
             .font(.system(.caption, design: .monospaced))
             .foregroundStyle(isLowTraffic ? .tertiary : .secondary)
@@ -204,6 +204,61 @@ struct PreviewPanelView: View {
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
+    }
+}
+
+struct SettingsView: View {
+    @ObservedObject var preferences: NetworkMonitorPreferences
+
+    var body: some View {
+        TabView {
+            Form {
+                Section("General") {
+                    Picker("Default mode", selection: $preferences.defaultDisplayMode) {
+                        ForEach(TrafficDisplayMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+
+                    Picker("Default average", selection: $preferences.defaultAverageWindow) {
+                        ForEach(AverageWindow.allCases) { window in
+                            Text(window.title).tag(window)
+                        }
+                    }
+
+                    Picker("Dashboard rows", selection: $preferences.dashboardProcessVisibility) {
+                        ForEach(DashboardProcessVisibility.allCases) { visibility in
+                            Text(visibility.title).tag(visibility)
+                        }
+                    }
+                }
+            }
+            .padding(20)
+            .tabItem {
+                Label("General", systemImage: "gearshape")
+            }
+
+            Form {
+                Section("Display") {
+                    Picker("Rate units", selection: $preferences.rateUnitStyle) {
+                        ForEach(NetworkRateUnitStyle.allCases) { style in
+                            Text("\(style.title) (\(style.detail))").tag(style)
+                        }
+                    }
+
+                    Picker("Preview threshold", selection: $preferences.previewThreshold) {
+                        ForEach(PreviewTrafficThreshold.allCases) { threshold in
+                            Text(threshold.title).tag(threshold)
+                        }
+                    }
+                }
+            }
+            .padding(20)
+            .tabItem {
+                Label("Display", systemImage: "textformat.size")
+            }
+        }
+        .frame(width: 460, height: 300)
     }
 }
 
@@ -349,7 +404,7 @@ struct DashboardView: View {
                         DirectionRateCell(
                             symbolName: "arrow.down",
                             tint: .blue,
-                            value: NetworkFormatting.rate(usage.downloadBytesPerSecond)
+                            value: NetworkFormatting.rate(usage.downloadBytesPerSecond, unitStyle: store.rateUnitStyle)
                         )
                     }
                     .width(min: 125, ideal: 135, max: 150)
@@ -358,13 +413,13 @@ struct DashboardView: View {
                         DirectionRateCell(
                             symbolName: "arrow.up",
                             tint: .green,
-                            value: NetworkFormatting.rate(usage.uploadBytesPerSecond)
+                            value: NetworkFormatting.rate(usage.uploadBytesPerSecond, unitStyle: store.rateUnitStyle)
                         )
                     }
                     .width(min: 125, ideal: 135, max: 150)
 
                     TableColumn("Total", sortUsing: KeyPathComparator(\ProcessUsage.totalBytesPerSecond, order: .reverse)) { usage in
-                        Text(NetworkFormatting.rate(usage.totalBytesPerSecond))
+                        Text(NetworkFormatting.rate(usage.totalBytesPerSecond, unitStyle: store.rateUnitStyle))
                             .font(.system(.body, design: .monospaced))
                     }
                     .width(min: 120, ideal: 130, max: 145)

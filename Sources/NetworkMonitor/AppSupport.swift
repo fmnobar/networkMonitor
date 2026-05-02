@@ -272,18 +272,31 @@ final class StatusPreviewPanelController {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let store = TrafficDashboardStore()
+    private let preferences: NetworkMonitorPreferences
+    private let store: TrafficDashboardStore
     private let launchOptions = NetworkMonitorLaunchOptions()
     private var statusItemController: StatusItemController?
     private var mainWindowController: MainWindowController?
+    private var settingsWindowController: SettingsWindowController?
+
+    override init() {
+        let preferences = NetworkMonitorPreferences()
+        self.preferences = preferences
+        self.store = TrafficDashboardStore(preferences: preferences)
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        configureApplicationMenu()
+
         mainWindowController = MainWindowController(
             store: store,
             onRestart: { [weak self] in
                 self?.store.restartCapture()
             }
         )
+
+        settingsWindowController = SettingsWindowController(preferences: preferences)
 
         statusItemController = StatusItemController(
             store: store,
@@ -292,6 +305,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onRestart: { [weak self] in
                 self?.store.restartCapture()
+            },
+            onSettings: { [weak self] in
+                self?.openSettings()
             },
             onQuit: { [weak self] in
                 self?.terminateApplication()
@@ -321,9 +337,82 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindowController?.showDashboard(resetPosition: resetPosition, forceFront: forceFront)
     }
 
+    @objc
+    private func openSettings() {
+        settingsWindowController?.showSettings()
+    }
+
+    private func configureApplicationMenu() {
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+
+        let appMenu = NSMenu()
+        let settingsItem = NSMenuItem(
+            title: "Settings…",
+            action: #selector(openSettings),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
+        appMenu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: "Quit NetworkMonitor",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        appMenu.addItem(quitItem)
+        appMenuItem.submenu = appMenu
+        NSApplication.shared.mainMenu = mainMenu
+    }
+
     private func terminateApplication() {
         store.stop()
         NSApplication.shared.terminate(nil)
+    }
+}
+
+@MainActor
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    init(preferences: NetworkMonitorPreferences) {
+        let rootView = SettingsView(preferences: preferences)
+        let hostingController = NSHostingController(rootView: rootView)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 300),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.title = "Settings"
+        window.contentViewController = hostingController
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.setFrameAutosaveName("NetworkMonitorSettingsWindow")
+
+        super.init(window: window)
+        window.delegate = self
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func showSettings() {
+        guard let window else {
+            return
+        }
+
+        NetworkMonitorDiagnostics.window("Opening settings window.")
+        if !MainWindowController.isVisibleOnAnyScreen(window.frame) {
+            MainWindowController.centerWindowOnMainVisibleScreen(window)
+        }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        window.orderFrontRegardless()
+        window.makeKeyAndOrderFront(nil)
     }
 }
 
@@ -373,13 +462,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private static func isVisibleOnAnyScreen(_ frame: NSRect) -> Bool {
+    static func isVisibleOnAnyScreen(_ frame: NSRect) -> Bool {
         NSScreen.screens.contains { screen in
             screen.visibleFrame.intersects(frame)
         }
     }
 
-    private static func centerWindowOnMainVisibleScreen(_ window: NSWindow) {
+    static func centerWindowOnMainVisibleScreen(_ window: NSWindow) {
         guard let visibleFrame = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame else {
             window.center()
             return
@@ -399,6 +488,7 @@ final class StatusItemController: NSObject {
     private let store: TrafficDashboardStore
     private let onOpen: () -> Void
     private let onRestart: () -> Void
+    private let onSettings: () -> Void
     private let onQuit: () -> Void
     private let statusItemWidth: CGFloat
 
@@ -428,11 +518,13 @@ final class StatusItemController: NSObject {
         store: TrafficDashboardStore,
         onOpen: @escaping () -> Void,
         onRestart: @escaping () -> Void,
+        onSettings: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.store = store
         self.onOpen = onOpen
         self.onRestart = onRestart
+        self.onSettings = onSettings
         self.onQuit = onQuit
         self.statusItemWidth = Self.measureStatusItemWidth()
         super.init()
@@ -503,6 +595,13 @@ final class StatusItemController: NSObject {
         interactionModel.forceClose()
         closePreviewPanel()
         onRestart()
+    }
+
+    @objc
+    private func openSettings() {
+        interactionModel.forceClose()
+        closePreviewPanel()
+        onSettings()
     }
 
     @objc
@@ -727,6 +826,7 @@ final class StatusItemController: NSObject {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Open", action: #selector(openDashboard), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Restart Capture", action: #selector(restartCapture), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApplication), keyEquivalent: "q"))
 

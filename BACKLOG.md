@@ -49,21 +49,16 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 - `./scripts/build_app.sh --smoke-ui`
 - Manual smoke confirmed dashboard sparklines, the `1 min` average option, preview panel, menu-bar label, and clean quit behavior.
 
-## P2
-
 ### 5. Add preferences for common behavior
 
-**Why:** Capture interval, average windows, launch behavior, process filtering, display units, and preview threshold are currently hardcoded.
+**Completed:** Added a native Settings window for presentation preferences, persisted defaults for mode/window, preview threshold, rate units, and dashboard row visibility, and exposed Settings from the status menu and `Command-,`.
 
-**Scope:**
-- Add a native settings window.
-- Store preferences with `@AppStorage` or a small preferences store.
-- Support launch at login only if it can be implemented cleanly and verified.
+**Verified:**
+- `swift test`
+- `./scripts/build_app.sh --smoke-ui`
+- Manual smoke confirmed Settings opens from the status menu and `Command-,`, preferences update dashboard/preview presentation, the menu-bar label remains compact, the app has no Dock icon, and clean quit behavior.
 
-**Acceptance:**
-- Preferences persist across launches.
-- Defaults preserve current behavior.
-- Settings do not require opening the dashboard.
+## P2
 
 ### 6. Split large UI/support files
 
@@ -81,6 +76,6 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 
 ## Recommended Next Planning
 
-Plan **P2: Add preferences for common behavior** next.
+Plan **P2: Split large UI/support files** next.
 
-After that, plan **P2: Split large UI/support files**. Preferences are the next highest-impact item because capture interval, average windows, launch behavior, process filtering, display units, and preview threshold are still hardcoded.
+After that, plan launch-at-login support as a focused follow-up if it can be implemented and verified cleanly.

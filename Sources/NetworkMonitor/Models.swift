@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 enum TrafficDisplayMode: String, CaseIterable, Identifiable {
@@ -12,6 +13,91 @@ enum TrafficDisplayMode: String, CaseIterable, Identifiable {
             return "Live"
         case .average:
             return "Average"
+        }
+    }
+}
+
+enum NetworkRateUnitStyle: String, CaseIterable, Identifiable, Sendable {
+    case binary
+    case decimal
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .binary:
+            return "Binary"
+        case .decimal:
+            return "Decimal"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .binary:
+            return "Base 1024"
+        case .decimal:
+            return "Base 1000"
+        }
+    }
+
+    var byteCountStyle: ByteCountFormatter.CountStyle {
+        switch self {
+        case .binary:
+            return .binary
+        case .decimal:
+            return .decimal
+        }
+    }
+
+    var compactDivisor: Double {
+        switch self {
+        case .binary:
+            return 1024
+        case .decimal:
+            return 1000
+        }
+    }
+}
+
+enum PreviewTrafficThreshold: UInt64, CaseIterable, Identifiable, Sendable {
+    case disabled = 0
+    case bytes512 = 512
+    case oneKilobyte = 1_024
+    case tenKilobytes = 10_240
+
+    var id: Self { self }
+
+    var bytesPerSecond: UInt64 {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .disabled:
+            return "Show all"
+        case .bytes512:
+            return "512 B/s"
+        case .oneKilobyte:
+            return "1 KB/s"
+        case .tenKilobytes:
+            return "10 KB/s"
+        }
+    }
+}
+
+enum DashboardProcessVisibility: String, CaseIterable, Identifiable, Sendable {
+    case allActive
+    case abovePreviewThreshold
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .allActive:
+            return "All active processes"
+        case .abovePreviewThreshold:
+            return "Above preview threshold"
         }
     }
 }
@@ -45,6 +131,66 @@ enum AverageWindow: Int, CaseIterable, Identifiable {
         }
 
         return "\(rawValue / 60)-minute average"
+    }
+}
+
+@MainActor
+final class NetworkMonitorPreferences: ObservableObject {
+    private enum Key {
+        static let defaultDisplayMode = "defaultDisplayMode"
+        static let defaultAverageWindow = "defaultAverageWindow"
+        static let previewThreshold = "previewThreshold"
+        static let rateUnitStyle = "rateUnitStyle"
+        static let dashboardProcessVisibility = "dashboardProcessVisibility"
+    }
+
+    private let userDefaults: UserDefaults
+
+    @Published var defaultDisplayMode: TrafficDisplayMode {
+        didSet {
+            userDefaults.set(defaultDisplayMode.rawValue, forKey: Key.defaultDisplayMode)
+        }
+    }
+
+    @Published var defaultAverageWindow: AverageWindow {
+        didSet {
+            userDefaults.set(defaultAverageWindow.rawValue, forKey: Key.defaultAverageWindow)
+        }
+    }
+
+    @Published var previewThreshold: PreviewTrafficThreshold {
+        didSet {
+            userDefaults.set(Int(previewThreshold.rawValue), forKey: Key.previewThreshold)
+        }
+    }
+
+    @Published var rateUnitStyle: NetworkRateUnitStyle {
+        didSet {
+            userDefaults.set(rateUnitStyle.rawValue, forKey: Key.rateUnitStyle)
+        }
+    }
+
+    @Published var dashboardProcessVisibility: DashboardProcessVisibility {
+        didSet {
+            userDefaults.set(dashboardProcessVisibility.rawValue, forKey: Key.dashboardProcessVisibility)
+        }
+    }
+
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+        self.defaultDisplayMode = TrafficDisplayMode(rawValue: userDefaults.string(forKey: Key.defaultDisplayMode) ?? "") ?? .live
+        self.defaultAverageWindow = AverageWindow(rawValue: userDefaults.integer(forKey: Key.defaultAverageWindow)) ?? .fifteenSeconds
+        if userDefaults.object(forKey: Key.previewThreshold) == nil {
+            self.previewThreshold = .oneKilobyte
+        } else {
+            self.previewThreshold = PreviewTrafficThreshold(rawValue: UInt64(userDefaults.integer(forKey: Key.previewThreshold))) ?? .oneKilobyte
+        }
+        self.rateUnitStyle = NetworkRateUnitStyle(rawValue: userDefaults.string(forKey: Key.rateUnitStyle) ?? "") ?? .binary
+        self.dashboardProcessVisibility = DashboardProcessVisibility(rawValue: userDefaults.string(forKey: Key.dashboardProcessVisibility) ?? "") ?? .allActive
+    }
+
+    var previewMinimumBytesPerSecond: UInt64 {
+        previewThreshold.bytesPerSecond
     }
 }
 
@@ -205,17 +351,23 @@ enum CaptureEvent: Equatable, Sendable {
 }
 
 enum NetworkFormatting {
-    static func rate(_ bytesPerSecond: UInt64) -> String {
-        "\(ByteCountFormatter.string(fromByteCount: Int64(bytesPerSecond), countStyle: .binary))/s"
+    static func rate(
+        _ bytesPerSecond: UInt64,
+        unitStyle: NetworkRateUnitStyle = .binary
+    ) -> String {
+        "\(ByteCountFormatter.string(fromByteCount: Int64(bytesPerSecond), countStyle: unitStyle.byteCountStyle))/s"
     }
 
-    static func compactRate(_ bytesPerSecond: UInt64) -> String {
+    static func compactRate(
+        _ bytesPerSecond: UInt64,
+        unitStyle: NetworkRateUnitStyle = .binary
+    ) -> String {
         let units = ["B", "K", "M", "G", "T"]
         var value = Double(bytesPerSecond)
         var unitIndex = 0
 
-        while value >= 1024, unitIndex < units.count - 1 {
-            value /= 1024
+        while value >= unitStyle.compactDivisor, unitIndex < units.count - 1 {
+            value /= unitStyle.compactDivisor
             unitIndex += 1
         }
 
@@ -249,8 +401,11 @@ enum NetworkFormatting {
         date.formatted(date: .omitted, time: .shortened)
     }
 
-    static func statusLabel(for snapshot: LiveSnapshot) -> String {
-        "↓ \(compactRate(snapshot.totalDownloadBytesPerSecond)) ↑ \(compactRate(snapshot.totalUploadBytesPerSecond))"
+    static func statusLabel(
+        for snapshot: LiveSnapshot,
+        unitStyle: NetworkRateUnitStyle = .binary
+    ) -> String {
+        "↓ \(compactRate(snapshot.totalDownloadBytesPerSecond, unitStyle: unitStyle)) ↑ \(compactRate(snapshot.totalUploadBytesPerSecond, unitStyle: unitStyle))"
     }
 
     static func retryDescription(_ status: CaptureRecoveryState) -> String {
