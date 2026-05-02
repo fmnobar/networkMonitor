@@ -66,6 +66,15 @@ func compactStatusLabelUsesBoundedRateFormatting() {
 }
 
 @Test
+func normalizedShareClampsToRenderableRange() {
+    #expect(NetworkFormatting.normalizedShare(-0.25) == 0)
+    #expect(NetworkFormatting.normalizedShare(.nan) == 0)
+    #expect(NetworkFormatting.normalizedShare(.infinity) == 0)
+    #expect(NetworkFormatting.normalizedShare(0.42) == 0.42)
+    #expect(NetworkFormatting.normalizedShare(1.4) == 1)
+}
+
+@Test
 func launchOptionsDefaultToNoDebugUI() {
     let options = NetworkMonitorLaunchOptions(arguments: ["/Applications/NetworkMonitor.app/Contents/MacOS/NetworkMonitor"])
 

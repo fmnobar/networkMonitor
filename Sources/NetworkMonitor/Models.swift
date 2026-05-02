@@ -118,6 +118,13 @@ enum NetworkFormatting {
         "\(Int((value * 100).rounded()))%"
     }
 
+    static func normalizedShare(_ value: Double) -> Double {
+        guard value.isFinite, value > 0 else {
+            return 0
+        }
+        return min(value, 1)
+    }
+
     static func snapshotTime(_ date: Date) -> String {
         date.formatted(date: .omitted, time: .standard)
     }

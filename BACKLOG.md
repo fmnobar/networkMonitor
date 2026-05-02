@@ -22,24 +22,16 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 - `./scripts/build_app.sh --smoke-ui`
 - Manual smoke confirmed the dashboard toolbar action, preview panel, menu-bar label, and clean quit behavior.
 
-## P0
-
 ### 2. Make the process table more glanceable
 
-**Why:** The current dashboard is accurate but visually flat. Users need to identify the top network consumers quickly.
+**Completed:** Kept the native sortable dashboard table and added per-process icons, direction-accented rate cells, and compact share bars for faster scanning.
 
-**Scope:**
-- Add app/process icons where available.
-- Add share bars or compact visual magnitude indicators.
-- Improve download/upload direction scanning without adding clutter.
-- Preserve sortable columns and search.
+**Verified:**
+- `swift test`
+- `./scripts/build_app.sh --smoke-ui`
+- Manual smoke confirmed table icons, share bars, direction cells, preview, and clean quit behavior.
 
-**Acceptance:**
-- Top consumers are visually obvious at a glance.
-- Long process names and small windows do not break layout.
-- Table sorting/search behavior remains intact.
-
-## P1
+## P0
 
 ### 3. Improve preview empty and low-traffic states
 
@@ -99,6 +91,6 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 
 ## Recommended Next Planning
 
-Plan **P0: Make the process table more glanceable** next.
+Plan **P0: Improve preview empty and low-traffic states** next.
 
-After that, plan **P1: Improve preview empty and low-traffic states**. The first item is now the highest-value dashboard UI improvement; the second addresses the remaining preview/dashboard mismatch.
+After that, revisit **P2: Expose capture history with lightweight trends**. The preview item addresses the remaining UI contradiction between the menu-bar label and filtered preview rows.
