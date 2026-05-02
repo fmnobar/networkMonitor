@@ -225,9 +225,6 @@ final class StatusItemController: NSObject {
             case .closePreview:
                 closePreviewPanel()
 
-            case .openDashboard:
-                openDashboard()
-
             case .showContextMenu:
                 guard let contextMenuEvent else {
                     continue

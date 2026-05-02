@@ -12,9 +12,6 @@ struct PreviewPanelView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(store.previewTitleText)
                         .font(.headline)
-                    Text(store.displayModeSummaryText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     if let snapshotTime = store.snapshotTimeText {
                         Text("Updated \(snapshotTime)")
                             .font(.caption)

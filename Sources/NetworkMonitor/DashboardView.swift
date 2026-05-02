@@ -7,7 +7,7 @@ struct DashboardView: View {
     let onRestart: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 12) {
             header
 
             switch store.viewState {
@@ -24,7 +24,7 @@ struct DashboardView: View {
                 content
             }
         }
-        .padding(24)
+        .padding(18)
         .frame(minWidth: 1_360, minHeight: 620)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -38,76 +38,56 @@ struct DashboardView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Network Monitor")
-                        .font(.system(size: 28, weight: .semibold))
-                    Text(store.dashboardSubtitleText)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                HStack(spacing: 16) {
-                    metricCard(
-                        title: "Download",
-                        value: store.totalDownloadText,
-                        trend: store.downloadTrend,
-                        tint: .blue
-                    )
-                    metricCard(
-                        title: "Upload",
-                        value: store.totalUploadText,
-                        trend: store.uploadTrend,
-                        tint: .green
-                    )
+        HStack(alignment: .center, spacing: 14) {
+            Picker("Mode", selection: $store.selectedDisplayMode) {
+                ForEach(TrafficDisplayMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
                 }
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 170)
 
-            HStack(spacing: 12) {
-                Picker("Mode", selection: $store.selectedDisplayMode) {
-                    ForEach(TrafficDisplayMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+            if store.selectedDisplayMode == .average {
+                Picker("Average Window", selection: $store.selectedAverageWindow) {
+                    ForEach(AverageWindow.allCases) { window in
+                        Text(window.title).tag(window)
                     }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 220)
-
-                if store.selectedDisplayMode == .average {
-                    Picker("Average Window", selection: $store.selectedAverageWindow) {
-                        ForEach(AverageWindow.allCases) { window in
-                            Text(window.title).tag(window)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 190)
-                }
-
-                Text(store.displayModeSummaryText)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
+                .frame(width: 150)
             }
 
-            HStack {
-                DashboardSearchField(text: $store.searchText)
+            DashboardSearchField(text: $store.searchText)
 
-                Spacer()
+            Spacer(minLength: 8)
 
-                if let snapshotTime = store.snapshotTimeText {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Updated \(snapshotTime)")
-                        if let lastSuccessfulCaptureText = store.lastSuccessfulCaptureText, lastSuccessfulCaptureText != snapshotTime {
-                            Text("Last good sample \(lastSuccessfulCaptureText)")
-                        }
+            metricCard(
+                title: "Download",
+                value: store.totalDownloadText,
+                trend: store.downloadTrend,
+                tint: .blue
+            )
+
+            metricCard(
+                title: "Upload",
+                value: store.totalUploadText,
+                trend: store.uploadTrend,
+                tint: .green
+            )
+
+            if let snapshotTime = store.snapshotTimeText {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Updated \(snapshotTime)")
+                    if let lastSuccessfulCaptureText = store.lastSuccessfulCaptureText, lastSuccessfulCaptureText != snapshotTime {
+                        Text("Last good \(lastSuccessfulCaptureText)")
                     }
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(width: 150, alignment: .trailing)
             }
         }
     }
@@ -203,7 +183,7 @@ struct DashboardView: View {
         trend: TrafficTrendSeries,
         tint: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(.caption)
@@ -223,15 +203,9 @@ struct DashboardView: View {
             Text(value)
                 .font(.system(.title3, design: .monospaced, weight: .semibold))
 
-            TrafficSparklineView(series: trend, tint: tint)
+            TrafficSparklineView(series: trend, tint: tint, height: 22)
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 14)
-        .frame(width: 190, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .frame(width: 160, alignment: .leading)
     }
 
     private func trendTitle(for trend: TrafficTrendSeries) -> String {
@@ -267,7 +241,8 @@ private struct DashboardSearchField: View {
             .textFieldStyle(.plain)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
-            .frame(maxWidth: 320, minHeight: 32)
+            .frame(width: 300)
+            .frame(minHeight: 32)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))

@@ -773,10 +773,18 @@ func previewInteractionStaysVisibleAcrossHoverTransitions() {
 }
 
 @Test
+func previewInteractionShowsPreviewOnStatusClick() {
+    var model = StatusPreviewInteractionModel()
+
+    #expect(model.leftClick() == [.cancelHoverOpen, .cancelDismiss, .showPreview])
+    #expect(model.state == .previewVisible)
+}
+
+@Test
 func previewInteractionSuppressesStatusHoverAfterDashboardOpen() {
     var model = StatusPreviewInteractionModel()
 
-    #expect(model.leftClick() == [.cancelHoverOpen, .cancelDismiss, .closePreview, .openDashboard])
+    model.suppressHoverUntilStatusItemExit()
     #expect(model.state == .hoverSuppressed)
     #expect(model.observe(region: .statusItem) == [])
     #expect(model.state == .hoverSuppressed)

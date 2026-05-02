@@ -85,7 +85,6 @@ enum StatusPreviewInteractionAction: Equatable {
     case cancelDismiss
     case showPreview
     case closePreview
-    case openDashboard
     case showContextMenu
 }
 
@@ -163,8 +162,8 @@ struct StatusPreviewInteractionModel {
     }
 
     mutating func leftClick() -> [StatusPreviewInteractionAction] {
-        state = .hoverSuppressed
-        return [.cancelHoverOpen, .cancelDismiss, .closePreview, .openDashboard]
+        state = .previewVisible
+        return [.cancelHoverOpen, .cancelDismiss, .showPreview]
     }
 
     mutating func rightClick() -> [StatusPreviewInteractionAction] {
