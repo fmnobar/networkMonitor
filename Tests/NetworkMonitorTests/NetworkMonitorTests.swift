@@ -75,6 +75,63 @@ func normalizedShareClampsToRenderableRange() {
 }
 
 @Test
+func trafficTrendSeriesHandlesEmptyHistoryAndInvalidNormalization() {
+    let emptySeries = TrafficTrendSeries(snapshots: [], value: \.totalDownloadBytesPerSecond)
+
+    #expect(emptySeries.samples.isEmpty)
+    #expect(emptySeries.direction == .flat)
+    #expect(TrafficTrendSeries.normalizedValue(-1, maximum: 100) == 0)
+    #expect(TrafficTrendSeries.normalizedValue(.nan, maximum: 100) == 0)
+    #expect(TrafficTrendSeries.normalizedValue(.infinity, maximum: 100) == 0)
+    #expect(TrafficTrendSeries.normalizedValue(100, maximum: .nan) == 0)
+    #expect(TrafficTrendSeries.normalizedValue(100, maximum: 0) == 0)
+    #expect(TrafficTrendSeries.normalizedValue(150, maximum: 100) == 1)
+    #expect(TrafficTrendSeries.normalizedValue(42, maximum: 100) == 0.42)
+}
+
+@Test
+func trafficTrendSeriesOrdersSamplesInsideOneMinuteWindow() {
+    let baseTime = Date(timeIntervalSince1970: 3_000)
+    let series = TrafficTrendSeries(
+        snapshots: [
+            trendSnapshot(capturedAt: baseTime.addingTimeInterval(61), download: 400),
+            trendSnapshot(capturedAt: baseTime, download: 100),
+            trendSnapshot(capturedAt: baseTime.addingTimeInterval(40), download: 300),
+            trendSnapshot(capturedAt: baseTime.addingTimeInterval(10), download: 200)
+        ],
+        value: \.totalDownloadBytesPerSecond
+    )
+
+    #expect(series.samples.map(\.capturedAt) == [
+        baseTime.addingTimeInterval(10),
+        baseTime.addingTimeInterval(40),
+        baseTime.addingTimeInterval(61)
+    ])
+    #expect(series.samples.map(\.bytesPerSecond) == [200, 300, 400])
+}
+
+@Test
+func trafficTrendSeriesNormalizesSpikesAndReportsDirection() {
+    let baseTime = Date(timeIntervalSince1970: 3_100)
+    let series = TrafficTrendSeries(
+        snapshots: [
+            trendSnapshot(capturedAt: baseTime, download: 10),
+            trendSnapshot(capturedAt: baseTime.addingTimeInterval(10), download: 50),
+            trendSnapshot(capturedAt: baseTime.addingTimeInterval(20), download: 100)
+        ],
+        value: \.totalDownloadBytesPerSecond
+    )
+
+    #expect(abs(series.samples[0].normalizedValue - 0.1) < 0.0001)
+    #expect(series.samples[1].normalizedValue == 0.5)
+    #expect(series.samples[2].normalizedValue == 1)
+    #expect(series.direction == .rising)
+    #expect(TrafficTrendSeries.direction(for: [100, 70, 40]) == .falling)
+    #expect(TrafficTrendSeries.direction(for: [100, 104]) == .flat)
+    #expect(TrafficTrendSeries.direction(for: [0, 0, 0]) == .flat)
+}
+
+@Test
 func launchOptionsDefaultToNoDebugUI() {
     let options = NetworkMonitorLaunchOptions(arguments: ["/Applications/NetworkMonitor.app/Contents/MacOS/NetworkMonitor"])
 
@@ -432,6 +489,39 @@ func storeSwitchesBetweenLiveAndAveragedModes() {
     #expect(store.displayedProcesses.last?.uploadBytesPerSecond == 17)
 }
 
+@MainActor
+@Test
+func storeAveragesOneMinuteWindowAndTrimsTrendHistory() {
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        smoothingFactor: 0,
+        visibilityGracePeriod: 0,
+        previewMinimumBytesPerSecond: 0
+    )
+    let baseTime = Date(timeIntervalSince1970: 6_500)
+
+    store.consume(.snapshot(trendSnapshot(capturedAt: baseTime, download: 100, upload: 50)))
+    store.consume(.snapshot(trendSnapshot(capturedAt: baseTime.addingTimeInterval(30), download: 300, upload: 150)))
+    store.consume(.snapshot(trendSnapshot(capturedAt: baseTime.addingTimeInterval(60), download: 500, upload: 250)))
+
+    store.selectedDisplayMode = .average
+    store.selectedAverageWindow = .oneMinute
+    #expect(store.snapshot?.totalDownloadBytesPerSecond == 300)
+    #expect(store.snapshot?.totalUploadBytesPerSecond == 150)
+    #expect(store.displayModeSummaryText == "Averaged over the last 1 min")
+
+    store.consume(.snapshot(trendSnapshot(capturedAt: baseTime.addingTimeInterval(61), download: 700, upload: 350)))
+
+    #expect(store.downloadTrend.samples.map(\.capturedAt) == [
+        baseTime.addingTimeInterval(30),
+        baseTime.addingTimeInterval(60),
+        baseTime.addingTimeInterval(61)
+    ])
+    #expect(store.downloadTrend.samples.map(\.bytesPerSecond) == [300, 500, 700])
+    #expect(store.snapshot?.totalDownloadBytesPerSecond == 500)
+    #expect(store.snapshot?.totalUploadBytesPerSecond == 250)
+}
+
 @Test
 func previewInteractionStaysVisibleAcrossHoverTransitions() {
     var model = StatusPreviewInteractionModel()
@@ -623,6 +713,32 @@ private func previewRowDescriptions(_ rows: [PreviewProcessRow]) -> [String] {
             return "empty"
         }
     }
+}
+
+private func trendSnapshot(
+    capturedAt: Date,
+    download: UInt64,
+    upload: UInt64 = 0
+) -> LiveSnapshot {
+    let total = download + upload
+    let processes = total > 0 ? [
+        ProcessUsage(
+            pid: 42,
+            name: "Safari",
+            downloadBytesPerSecond: download,
+            uploadBytesPerSecond: upload,
+            totalBytesPerSecond: total,
+            shareOfTotal: 1,
+            lastSeen: capturedAt
+        )
+    ] : []
+
+    return LiveSnapshot(
+        capturedAt: capturedAt,
+        totalDownloadBytesPerSecond: download,
+        totalUploadBytesPerSecond: upload,
+        processes: processes
+    )
 }
 
 private actor WaitPlan {

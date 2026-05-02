@@ -19,6 +19,7 @@ enum TrafficDisplayMode: String, CaseIterable, Identifiable {
 enum AverageWindow: Int, CaseIterable, Identifiable {
     case fifteenSeconds = 15
     case thirtySeconds = 30
+    case oneMinute = 60
 
     var id: Self { self }
 
@@ -26,12 +27,24 @@ enum AverageWindow: Int, CaseIterable, Identifiable {
         TimeInterval(rawValue)
     }
 
+    static var maximumDuration: TimeInterval {
+        allCases.map(\.duration).max() ?? 0
+    }
+
     var title: String {
-        "\(rawValue)s"
+        if rawValue < 60 {
+            return "\(rawValue)s"
+        }
+
+        return "\(rawValue / 60) min"
     }
 
     var descriptiveTitle: String {
-        "\(rawValue)-second average"
+        if rawValue < 60 {
+            return "\(rawValue)-second average"
+        }
+
+        return "\(rawValue / 60)-minute average"
     }
 }
 
@@ -52,6 +65,103 @@ struct LiveSnapshot: Equatable, Sendable {
     let totalDownloadBytesPerSecond: UInt64
     let totalUploadBytesPerSecond: UInt64
     let processes: [ProcessUsage]
+}
+
+enum TrafficTrendDirection: Equatable, Sendable {
+    case rising
+    case falling
+    case flat
+
+    var title: String {
+        switch self {
+        case .rising:
+            return "Rising"
+        case .falling:
+            return "Falling"
+        case .flat:
+            return "Flat"
+        }
+    }
+
+    var systemImageName: String {
+        switch self {
+        case .rising:
+            return "arrow.up.right"
+        case .falling:
+            return "arrow.down.right"
+        case .flat:
+            return "arrow.right"
+        }
+    }
+}
+
+struct TrafficTrendSample: Identifiable, Equatable, Sendable {
+    let capturedAt: Date
+    let bytesPerSecond: UInt64
+    let normalizedValue: Double
+
+    var id: Date { capturedAt }
+}
+
+struct TrafficTrendSeries: Equatable, Sendable {
+    let samples: [TrafficTrendSample]
+    let direction: TrafficTrendDirection
+
+    init(
+        snapshots: [LiveSnapshot],
+        value: (LiveSnapshot) -> UInt64,
+        duration: TimeInterval = AverageWindow.maximumDuration
+    ) {
+        guard let latestSnapshot = snapshots.max(by: { $0.capturedAt < $1.capturedAt }) else {
+            samples = []
+            direction = .flat
+            return
+        }
+
+        let cutoff = latestSnapshot.capturedAt.addingTimeInterval(-duration)
+        let snapshotsInWindow = snapshots
+            .filter { $0.capturedAt >= cutoff }
+            .sorted { $0.capturedAt < $1.capturedAt }
+        let maximumRate = snapshotsInWindow
+            .map { Double(value($0)) }
+            .max() ?? 0
+
+        samples = snapshotsInWindow.map { snapshot in
+            let rate = value(snapshot)
+            return TrafficTrendSample(
+                capturedAt: snapshot.capturedAt,
+                bytesPerSecond: rate,
+                normalizedValue: Self.normalizedValue(Double(rate), maximum: maximumRate)
+            )
+        }
+        direction = Self.direction(for: samples.map { Double($0.bytesPerSecond) })
+    }
+
+    static func normalizedValue(_ value: Double, maximum: Double) -> Double {
+        guard value.isFinite, maximum.isFinite, value > 0, maximum > 0 else {
+            return 0
+        }
+
+        return min(value / maximum, 1)
+    }
+
+    static func direction(for values: [Double]) -> TrafficTrendDirection {
+        guard values.count >= 2, let first = values.first, let last = values.last else {
+            return .flat
+        }
+
+        let maximum = values.max() ?? 0
+        guard maximum > 0 else {
+            return .flat
+        }
+
+        let relativeDelta = (last - first) / maximum
+        guard abs(relativeDelta) >= 0.05 else {
+            return .flat
+        }
+
+        return relativeDelta > 0 ? .rising : .falling
+    }
 }
 
 struct CaptureRecoveryState: Equatable, Sendable {

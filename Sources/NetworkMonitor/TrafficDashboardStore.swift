@@ -152,6 +152,20 @@ final class TrafficDashboardStore: ObservableObject {
         NetworkFormatting.rate(snapshot?.totalUploadBytesPerSecond ?? 0)
     }
 
+    var downloadTrend: TrafficTrendSeries {
+        TrafficTrendSeries(
+            snapshots: rawSnapshotHistory,
+            value: \.totalDownloadBytesPerSecond
+        )
+    }
+
+    var uploadTrend: TrafficTrendSeries {
+        TrafficTrendSeries(
+            snapshots: rawSnapshotHistory,
+            value: \.totalUploadBytesPerSecond
+        )
+    }
+
     var displayModeSummaryText: String {
         switch selectedDisplayMode {
         case .live:
@@ -474,7 +488,7 @@ final class TrafficDashboardStore: ObservableObject {
     private func appendToSnapshotHistory(_ rawSnapshot: LiveSnapshot) {
         rawSnapshotHistory.append(rawSnapshot)
 
-        let oldestAllowedDate = rawSnapshot.capturedAt.addingTimeInterval(-AverageWindow.thirtySeconds.duration)
+        let oldestAllowedDate = rawSnapshot.capturedAt.addingTimeInterval(-AverageWindow.maximumDuration)
         rawSnapshotHistory.removeAll { $0.capturedAt < oldestAllowedDate }
     }
 

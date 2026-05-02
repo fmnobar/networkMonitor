@@ -1,4 +1,5 @@
 import AppKit
+import Charts
 import SwiftUI
 
 struct PreviewPanelView: View {
@@ -108,7 +109,7 @@ struct PreviewPanelView: View {
                 .pickerStyle(.segmented)
                 .controlSize(.small)
                 .labelsHidden()
-                .frame(width: 120)
+                .frame(width: 136)
                 .padding(.leading, 10)
             }
 
@@ -255,8 +256,18 @@ struct DashboardView: View {
                 Spacer()
 
                 HStack(spacing: 16) {
-                    metricCard(title: "Download", value: store.totalDownloadText)
-                    metricCard(title: "Upload", value: store.totalUploadText)
+                    metricCard(
+                        title: "Download",
+                        value: store.totalDownloadText,
+                        trend: store.downloadTrend,
+                        tint: .blue
+                    )
+                    metricCard(
+                        title: "Upload",
+                        value: store.totalUploadText,
+                        trend: store.uploadTrend,
+                        tint: .green
+                    )
                 }
             }
 
@@ -276,7 +287,7 @@ struct DashboardView: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 150)
+                    .frame(width: 190)
                 }
 
                 Text(store.displayModeSummaryText)
@@ -392,20 +403,49 @@ struct DashboardView: View {
         }
     }
 
-    private func metricCard(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
+    private func metricCard(
+        title: String,
+        value: String,
+        trend: TrafficTrendSeries,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 4) {
+                    Image(systemName: trendIconName(for: trend))
+                        .font(.caption2.weight(.semibold))
+                    Text(trendTitle(for: trend))
+                        .font(.caption2)
+                }
                 .foregroundStyle(.secondary)
+            }
+
             Text(value)
                 .font(.system(.title3, design: .monospaced, weight: .semibold))
+
+            TrafficSparklineView(series: trend, tint: tint)
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
+        .frame(width: 190, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
+    }
+
+    private func trendTitle(for trend: TrafficTrendSeries) -> String {
+        trend.samples.count < 2 ? "Waiting" : trend.direction.title
+    }
+
+    private func trendIconName(for trend: TrafficTrendSeries) -> String {
+        trend.samples.count < 2 ? "clock" : trend.direction.systemImageName
     }
 
     private func statusPanel(title: String, subtitle: String) -> some View {
@@ -422,6 +462,54 @@ struct DashboardView: View {
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
+    }
+}
+
+private struct TrafficSparklineView: View {
+    let series: TrafficTrendSeries
+    let tint: Color
+
+    var body: some View {
+        Group {
+            if series.samples.isEmpty {
+                emptySparkline
+            } else {
+                Chart {
+                    ForEach(series.samples) { sample in
+                        LineMark(
+                            x: .value("Time", sample.capturedAt),
+                            y: .value("Rate", sample.normalizedValue)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(tint)
+
+                        if series.samples.count == 1 {
+                            PointMark(
+                                x: .value("Time", sample.capturedAt),
+                                y: .value("Rate", sample.normalizedValue)
+                            )
+                            .foregroundStyle(tint)
+                        }
+                    }
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .chartYScale(domain: -0.05...1)
+            }
+        }
+        .frame(height: 32)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.25))
+                .frame(height: 1)
+        }
+        .accessibilityLabel("Traffic trend \(series.direction.title)")
+    }
+
+    private var emptySparkline: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

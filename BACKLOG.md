@@ -40,20 +40,14 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 - `./scripts/build_app.sh --smoke-ui`
 - Manual smoke confirmed the preview panel, dashboard, menu-bar label, and clean quit behavior.
 
-## P0
-
 ### 4. Expose capture history with lightweight trends
 
-**Why:** The store already keeps raw history for averages, but the UI only surfaces current/average numbers. Small trends would make the dashboard more useful without changing capture plumbing.
+**Completed:** Added compact dashboard sparklines for total download/upload, retained one minute of raw history, and exposed a `1 min` average window without changing capture plumbing.
 
-**Scope:**
-- Add sparklines for total download/upload.
-- Add more average windows such as 1 minute and 5 minutes if memory/runtime impact stays low.
-- Consider a "top process over time" detail area.
-
-**Acceptance:**
-- Users can see whether traffic is rising, falling, or spiking.
-- Existing live and average behavior remains correct.
+**Verified:**
+- `swift test`
+- `./scripts/build_app.sh --smoke-ui`
+- Manual smoke confirmed dashboard sparklines, the `1 min` average option, preview panel, menu-bar label, and clean quit behavior.
 
 ## P2
 
@@ -87,6 +81,6 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 
 ## Recommended Next Planning
 
-Plan **P0: Expose capture history with lightweight trends** next.
+Plan **P2: Add preferences for common behavior** next.
 
-After that, plan **P2: Add preferences for common behavior**. Trends are now the highest-impact visible improvement before moving threshold and display choices into settings.
+After that, plan **P2: Split large UI/support files**. Preferences are the next highest-impact item because capture interval, average windows, launch behavior, process filtering, display units, and preview threshold are still hardcoded.
