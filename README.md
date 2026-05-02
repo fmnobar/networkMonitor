@@ -22,6 +22,12 @@ Build and open the app:
 ./scripts/build_app.sh --open
 ```
 
+Build and open the dashboard plus preview for UI smoke testing:
+
+```bash
+./scripts/build_app.sh --smoke-ui
+```
+
 Create a local archive artifact:
 
 ```bash
@@ -42,13 +48,13 @@ swift test
 
 ## Manual Smoke Checklist
 
-- Launch the packaged app with `./scripts/build_app.sh --open`.
+- Launch the packaged app with `./scripts/build_app.sh --smoke-ui`.
 - Confirm the app appears in the macOS menu bar without a Dock icon.
 - Confirm the menu bar label stays compact and shows only `↓ <rate> ↑ <rate>`.
-- Hover the menu bar item and confirm the fixed five-row preview panel opens below the menu bar.
+- Confirm the dashboard window opens or focuses.
+- Confirm the fixed five-row preview panel opens below the menu bar without manual hover.
 - Move the pointer from the status item into the preview panel and confirm it stays open.
 - Keep the preview open for at least 20 seconds and confirm it does not jitter or drift under the notch.
-- Click the status item and confirm the dashboard window opens or focuses.
 - Right-click the status item and confirm `Open`, `Restart Capture`, and `Quit` are available.
 - Trigger visible traffic and confirm the ranking changes within a few seconds.
 - Use `Restart Capture` and confirm the app recovers while retaining the last good snapshot.

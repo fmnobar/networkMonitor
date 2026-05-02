@@ -8,6 +8,16 @@ enum StatusPreviewLayout {
     static let statusItemReferenceText = "↓ 99.9T ↑ 99.9T"
 }
 
+struct NetworkMonitorLaunchOptions: Equatable {
+    let showPreviewOnLaunch: Bool
+    let openDashboardOnLaunch: Bool
+
+    init(arguments: [String] = CommandLine.arguments) {
+        showPreviewOnLaunch = arguments.contains("--debug-show-preview")
+        openDashboardOnLaunch = arguments.contains("--debug-open-dashboard")
+    }
+}
+
 enum StatusPopoverPositioning {
     static func placementFrame(
         screenFrame: CGRect,
@@ -263,6 +273,7 @@ final class StatusPreviewPanelController {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = TrafficDashboardStore()
+    private let launchOptions = NetworkMonitorLaunchOptions()
     private var statusItemController: StatusItemController?
     private var mainWindowController: MainWindowController?
 
@@ -288,6 +299,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         store.start()
+
+        if launchOptions.openDashboardOnLaunch {
+            openDashboard(resetPosition: true, forceFront: true)
+        }
+
+        if launchOptions.showPreviewOnLaunch {
+            statusItemController?.showPreviewWhenReadyForDebug()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -298,8 +317,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.stop()
     }
 
-    private func openDashboard() {
-        mainWindowController?.showDashboard()
+    private func openDashboard(resetPosition: Bool = false, forceFront: Bool = false) {
+        mainWindowController?.showDashboard(resetPosition: resetPosition, forceFront: forceFront)
     }
 
     private func terminateApplication() {
@@ -336,14 +355,42 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func showDashboard() {
+    func showDashboard(resetPosition: Bool = false, forceFront: Bool = false) {
         guard let window else {
             return
         }
 
         NetworkMonitorDiagnostics.window("Opening dashboard window.")
+        if resetPosition || !Self.isVisibleOnAnyScreen(window.frame) {
+            Self.centerWindowOnMainVisibleScreen(window)
+        }
+        window.level = forceFront ? .floating : .normal
         NSApplication.shared.activate(ignoringOtherApps: true)
+        window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
+        if resetPosition {
+            Self.centerWindowOnMainVisibleScreen(window)
+        }
+    }
+
+    private static func isVisibleOnAnyScreen(_ frame: NSRect) -> Bool {
+        NSScreen.screens.contains { screen in
+            screen.visibleFrame.intersects(frame)
+        }
+    }
+
+    private static func centerWindowOnMainVisibleScreen(_ window: NSWindow) {
+        guard let visibleFrame = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame else {
+            window.center()
+            return
+        }
+
+        let size = window.frame.size
+        let origin = NSPoint(
+            x: visibleFrame.midX - (size.width / 2),
+            y: visibleFrame.midY - (size.height / 2)
+        )
+        window.setFrame(NSRect(origin: origin, size: size), display: window.isVisible)
     }
 }
 
@@ -373,9 +420,9 @@ final class StatusItemController: NSObject {
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
     private var screenParametersObserver: Any?
+    private var debugPreviewTask: Task<Void, Never>?
     private var interactionModel = StatusPreviewInteractionModel()
     private var lastPreviewAnchorFrame: NSRect?
-    private let shouldShowPreviewOnLaunch = CommandLine.arguments.contains("--debug-show-preview")
 
     init(
         store: TrafficDashboardStore,
@@ -394,7 +441,37 @@ final class StatusItemController: NSObject {
         bindStore()
         startHoverObservation()
         observeScreenChanges()
-        showPreviewOnLaunchIfRequested()
+    }
+
+    func showPreviewWhenReadyForDebug() {
+        debugPreviewTask?.cancel()
+        debugPreviewTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            let maxAttempts = 30
+            let retryDelayNanoseconds: UInt64 = 100_000_000
+            NetworkMonitorDiagnostics.menuBar("Debug preview requested; waiting for status item frame.")
+
+            for attempt in 1...maxAttempts {
+                if Task.isCancelled {
+                    return
+                }
+
+                if let context = self.previewPlacementContext() {
+                    NetworkMonitorDiagnostics.menuBar("Opening debug preview after \(attempt) attempt(s).")
+                    self.showPreviewPanel(using: context, installDismissMonitors: false)
+                    return
+                }
+
+                if attempt == 1 || attempt == maxAttempts {
+                    NetworkMonitorDiagnostics.menuBar("Debug preview attempt \(attempt) unavailable: \(self.previewPlacementFailureReason()).")
+                }
+
+                try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
+            }
+        }
     }
 
     @objc
@@ -463,17 +540,6 @@ final class StatusItemController: NSObject {
             Task { @MainActor [weak self] in
                 self?.repositionPreviewIfNeeded(force: true)
             }
-        }
-    }
-
-    private func showPreviewOnLaunchIfRequested() {
-        guard shouldShowPreviewOnLaunch else {
-            return
-        }
-
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            self?.showPreviewPanel()
         }
     }
 
@@ -581,18 +647,56 @@ final class StatusItemController: NSObject {
     }
 
     private func showPreviewPanel() {
-        guard
-            let buttonFrame = statusItemButtonFrame(),
-            let screen = screenForAnchorFrame(buttonFrame)
-        else {
+        guard let context = previewPlacementContext() else {
+            NetworkMonitorDiagnostics.menuBar("Unable to open preview panel: \(previewPlacementFailureReason()).")
             interactionModel.forceClose()
             return
         }
 
+        showPreviewPanel(using: context)
+    }
+
+    private func showPreviewPanel(
+        using context: (buttonFrame: NSRect, screen: NSScreen),
+        installDismissMonitors: Bool = true
+    ) {
         cancelDismissTask()
-        previewPanelController.show(anchorFrame: buttonFrame, screen: screen)
-        installEventMonitors()
-        lastPreviewAnchorFrame = buttonFrame
+        previewPanelController.show(anchorFrame: context.buttonFrame, screen: context.screen)
+        if installDismissMonitors {
+            installEventMonitors()
+        }
+        lastPreviewAnchorFrame = context.buttonFrame
+    }
+
+    private func previewPlacementContext() -> (buttonFrame: NSRect, screen: NSScreen)? {
+        guard
+            let buttonFrame = statusItemButtonFrame(),
+            let screen = screenForAnchorFrame(buttonFrame)
+        else {
+            return nil
+        }
+
+        return (buttonFrame, screen)
+    }
+
+    private func previewPlacementFailureReason() -> String {
+        guard let button = statusItem.button else {
+            return "status item button unavailable"
+        }
+
+        guard button.window != nil else {
+            return "status item button window unavailable"
+        }
+
+        guard let buttonFrame = statusItemButtonFrame() else {
+            return "status item frame unavailable"
+        }
+
+        guard screenForAnchorFrame(buttonFrame) != nil else {
+            return "screen unavailable for status item frame \(buttonFrame)"
+        }
+
+        return "unknown preview placement failure"
     }
 
     private func repositionPreviewIfNeeded(force: Bool = false) {

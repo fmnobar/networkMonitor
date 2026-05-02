@@ -8,6 +8,7 @@ DERIVED_DATA_PATH="$ROOT_DIR/.build/xcode"
 CONFIGURATION="Debug"
 SHOULD_OPEN=0
 PRINT_APP_PATH=0
+SMOKE_UI=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -17,6 +18,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --open)
       SHOULD_OPEN=1
+      shift
+      ;;
+    --smoke-ui)
+      SMOKE_UI=1
       shift
       ;;
     --print-app-path)
@@ -45,6 +50,10 @@ if [[ $PRINT_APP_PATH -eq 1 ]]; then
   printf '%s\n' "$APP_PATH"
 fi
 
-if [[ $SHOULD_OPEN -eq 1 ]]; then
+if [[ $SMOKE_UI -eq 1 ]]; then
+  pkill -x NetworkMonitor 2>/dev/null || true
+  sleep 0.5
+  open -n "$APP_PATH" --args --debug-open-dashboard --debug-show-preview
+elif [[ $SHOULD_OPEN -eq 1 ]]; then
   open "$APP_PATH"
 fi

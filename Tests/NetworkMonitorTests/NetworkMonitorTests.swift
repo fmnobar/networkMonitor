@@ -65,6 +65,48 @@ func compactStatusLabelUsesBoundedRateFormatting() {
     #expect(label.count <= StatusPreviewLayout.statusItemReferenceText.count)
 }
 
+@Test
+func launchOptionsDefaultToNoDebugUI() {
+    let options = NetworkMonitorLaunchOptions(arguments: ["/Applications/NetworkMonitor.app/Contents/MacOS/NetworkMonitor"])
+
+    #expect(!options.showPreviewOnLaunch)
+    #expect(!options.openDashboardOnLaunch)
+}
+
+@Test
+func launchOptionsCanEnablePreviewOnly() {
+    let options = NetworkMonitorLaunchOptions(arguments: [
+        "NetworkMonitor",
+        "--debug-show-preview"
+    ])
+
+    #expect(options.showPreviewOnLaunch)
+    #expect(!options.openDashboardOnLaunch)
+}
+
+@Test
+func launchOptionsCanEnableDashboardOnly() {
+    let options = NetworkMonitorLaunchOptions(arguments: [
+        "NetworkMonitor",
+        "--debug-open-dashboard"
+    ])
+
+    #expect(!options.showPreviewOnLaunch)
+    #expect(options.openDashboardOnLaunch)
+}
+
+@Test
+func launchOptionsCanEnablePreviewAndDashboard() {
+    let options = NetworkMonitorLaunchOptions(arguments: [
+        "NetworkMonitor",
+        "--debug-open-dashboard",
+        "--debug-show-preview"
+    ])
+
+    #expect(options.showPreviewOnLaunch)
+    #expect(options.openDashboardOnLaunch)
+}
+
 @MainActor
 @Test
 func storeFiltersAndSortsDisplayedProcesses() {
