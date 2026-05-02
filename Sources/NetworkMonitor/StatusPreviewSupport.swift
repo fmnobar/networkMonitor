@@ -69,6 +69,7 @@ enum StatusPreviewInteractionState: Equatable {
     case previewVisible
     case dismissPending
     case contextMenuVisible
+    case hoverSuppressed
 }
 
 enum StatusPreviewHoverRegion: Equatable {
@@ -94,6 +95,13 @@ struct StatusPreviewInteractionModel {
     mutating func observe(region: StatusPreviewHoverRegion) -> [StatusPreviewInteractionAction] {
         switch state {
         case .contextMenuVisible:
+            return []
+
+        case .hoverSuppressed:
+            guard region != .statusItem else {
+                return []
+            }
+            state = .idle
             return []
 
         case .idle:
@@ -155,7 +163,7 @@ struct StatusPreviewInteractionModel {
     }
 
     mutating func leftClick() -> [StatusPreviewInteractionAction] {
-        state = .idle
+        state = .hoverSuppressed
         return [.cancelHoverOpen, .cancelDismiss, .closePreview, .openDashboard]
     }
 
@@ -166,6 +174,10 @@ struct StatusPreviewInteractionModel {
 
     mutating func forceClose() {
         state = .idle
+    }
+
+    mutating func suppressHoverUntilStatusItemExit() {
+        state = .hoverSuppressed
     }
 
     mutating func contextMenuDidClose() {

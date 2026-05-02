@@ -664,6 +664,20 @@ func previewInteractionStaysVisibleAcrossHoverTransitions() {
 }
 
 @Test
+func previewInteractionSuppressesStatusHoverAfterDashboardOpen() {
+    var model = StatusPreviewInteractionModel()
+
+    #expect(model.leftClick() == [.cancelHoverOpen, .cancelDismiss, .closePreview, .openDashboard])
+    #expect(model.state == .hoverSuppressed)
+    #expect(model.observe(region: .statusItem) == [])
+    #expect(model.state == .hoverSuppressed)
+    #expect(model.observe(region: .outside) == [])
+    #expect(model.state == .idle)
+    #expect(model.observe(region: .statusItem) == [.scheduleHoverOpen])
+    #expect(model.state == .hoverPending)
+}
+
+@Test
 func captureServiceRestartsAfterFailure() async throws {
     let header = "time,,interface,state,bytes_in,bytes_out,rx_dupe,rx_ooo,re-tx,rtt_avg,rcvsize,tx_win,tc_class,tc_mgt,cc_algo,P,C,R,W,"
     let producer = MockProducer(

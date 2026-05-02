@@ -25,7 +25,7 @@ struct DashboardView: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 920, minHeight: 620)
+        .frame(minWidth: 1_360, minHeight: 620)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(action: onRestart) {
@@ -94,9 +94,7 @@ struct DashboardView: View {
             }
 
             HStack {
-                TextField("Search by process name or PID", text: $store.searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 320)
+                DashboardSearchField(text: $store.searchText)
 
                 Spacer()
 
@@ -258,5 +256,26 @@ struct DashboardView: View {
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
+    }
+}
+
+private struct DashboardSearchField: View {
+    @Binding var text: String
+
+    var body: some View {
+        TextField("Search by process name or PID", text: $text)
+            .textFieldStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: 320, minHeight: 32)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(Color(nsColor: .separatorColor).opacity(0.75), lineWidth: 1)
+            )
+            .accessibilityLabel("Search by process name or PID")
     }
 }

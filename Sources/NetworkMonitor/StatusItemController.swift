@@ -103,7 +103,7 @@ final class StatusItemController: NSObject {
 
     @objc
     private func openDashboard() {
-        interactionModel.forceClose()
+        interactionModel.suppressHoverUntilStatusItemExit()
         closePreviewPanel()
         onOpen()
     }

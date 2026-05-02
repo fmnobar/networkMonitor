@@ -46,12 +46,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
 @MainActor
 final class MainWindowController: NSWindowController, NSWindowDelegate {
+    private static let defaultContentSize = NSSize(width: 1_440, height: 720)
+    private static let minimumContentSize = NSSize(width: 1_360, height: 620)
+
     init(store: TrafficDashboardStore, onRestart: @escaping () -> Void) {
         let rootView = DashboardView(store: store, onRestart: onRestart)
         let hostingController = NSHostingController(rootView: rootView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 980, height: 660),
+            contentRect: NSRect(origin: .zero, size: Self.defaultContentSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -59,9 +62,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
         window.title = "Network Monitor"
         window.contentViewController = hostingController
+        window.contentMinSize = Self.minimumContentSize
         window.isReleasedWhenClosed = false
         window.center()
         window.setFrameAutosaveName("NetworkMonitorMainWindow")
+        Self.expandWindowToMinimumContentSize(window)
 
         super.init(window: window)
         window.delegate = self
@@ -78,6 +83,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
 
         NetworkMonitorDiagnostics.window("Opening dashboard window.")
+        Self.expandWindowToMinimumContentSize(window)
         if resetPosition || !Self.isVisibleOnAnyScreen(window.frame) {
             Self.centerWindowOnMainVisibleScreen(window)
         }
@@ -108,5 +114,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             y: visibleFrame.midY - (size.height / 2)
         )
         window.setFrame(NSRect(origin: origin, size: size), display: window.isVisible)
+    }
+
+    private static func expandWindowToMinimumContentSize(_ window: NSWindow) {
+        let currentSize = window.contentView?.frame.size ?? window.contentLayoutRect.size
+        let targetSize = NSSize(
+            width: max(currentSize.width, minimumContentSize.width),
+            height: max(currentSize.height, minimumContentSize.height)
+        )
+        guard targetSize != currentSize else {
+            return
+        }
+
+        window.setContentSize(targetSize)
     }
 }
