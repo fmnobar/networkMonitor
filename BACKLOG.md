@@ -13,23 +13,16 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 - `./scripts/build_app.sh --smoke-ui`
 - Manual screenshot confirmed the menu-bar label, preview panel, and dashboard window are visible.
 
-## P0
-
 ### 1. Add a visible dashboard restart action
 
-**Why:** `DashboardView` accepts `onRestart`, but the dashboard does not expose a restart control. Users can recover capture from the preview/context menu, but not from the main window where failure/stall status is most visible.
+**Completed:** Added a native dashboard toolbar action for `Restart Capture`, backed by the existing restart callback, with restart disabled while capture is starting or retrying.
 
-**Scope:**
-- Add a toolbar or header action for `Restart Capture`.
-- Disable or show progress copy while a restart is already in flight.
-- Keep the context menu and preview restart behavior unchanged.
+**Verified:**
+- `swift test`
+- `./scripts/build_app.sh --smoke-ui`
+- Manual smoke confirmed the dashboard toolbar action, preview panel, menu-bar label, and clean quit behavior.
 
-**Acceptance:**
-- Restart is available from the dashboard.
-- Existing capture restart tests still pass.
-- Manual smoke confirms the dashboard action updates status and capture recovers.
-
-## P1
+## P0
 
 ### 2. Make the process table more glanceable
 
@@ -45,6 +38,8 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 - Top consumers are visually obvious at a glance.
 - Long process names and small windows do not break layout.
 - Table sorting/search behavior remains intact.
+
+## P1
 
 ### 3. Improve preview empty and low-traffic states
 
@@ -104,6 +99,6 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 
 ## Recommended Next Planning
 
-Plan **P0: Add a visible dashboard restart action** next.
+Plan **P0: Make the process table more glanceable** next.
 
-After that, plan **P1: Make the process table more glanceable**. The first item closes a small functionality gap; the second is the highest-value UI improvement now that the smoke workflow can verify visual changes.
+After that, plan **P1: Improve preview empty and low-traffic states**. The first item is now the highest-value dashboard UI improvement; the second addresses the remaining preview/dashboard mismatch.

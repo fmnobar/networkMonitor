@@ -210,6 +210,15 @@ struct DashboardView: View {
         }
         .padding(24)
         .frame(minWidth: 920, minHeight: 620)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: onRestart) {
+                    Label("Restart Capture", systemImage: "arrow.clockwise")
+                }
+                .disabled(!store.viewState.allowsManualRestart)
+                .help("Restart Capture")
+            }
+        }
     }
 
     private var header: some View {

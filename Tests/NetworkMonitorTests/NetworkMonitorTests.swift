@@ -107,6 +107,42 @@ func launchOptionsCanEnablePreviewAndDashboard() {
     #expect(options.openDashboardOnLaunch)
 }
 
+@Test
+func dashboardManualRestartAvailabilityMatchesCaptureState() {
+    let captureTime = Date(timeIntervalSince1970: 2_750)
+    let snapshot = LiveSnapshot(
+        capturedAt: captureTime,
+        totalDownloadBytesPerSecond: 128,
+        totalUploadBytesPerSecond: 64,
+        processes: []
+    )
+    let recoveryState = CaptureRecoveryState(
+        message: "Restarting capture.",
+        attempt: 0,
+        nextRetryDate: nil,
+        lastSuccessfulCaptureAt: captureTime
+    )
+
+    let disabledStates: [DashboardViewState] = [
+        .starting,
+        .retrying(snapshot: nil, status: recoveryState),
+        .retrying(snapshot: snapshot, status: recoveryState)
+    ]
+
+    let enabledStates: [DashboardViewState] = [
+        .live(snapshot),
+        .noTraffic(snapshot),
+        .stalled(snapshot: snapshot, message: "No fresh sample."),
+        .failed(snapshot: nil, message: "nettop failed."),
+        .failed(snapshot: snapshot, message: "nettop failed."),
+        .stopped(snapshot: nil),
+        .stopped(snapshot: snapshot)
+    ]
+
+    #expect(disabledStates.allSatisfy { !$0.allowsManualRestart })
+    #expect(enabledStates.allSatisfy { $0.allowsManualRestart })
+}
+
 @MainActor
 @Test
 func storeFiltersAndSortsDisplayedProcesses() {

@@ -69,6 +69,15 @@ enum DashboardViewState: Equatable {
     case stalled(snapshot: LiveSnapshot, message: String)
     case failed(snapshot: LiveSnapshot?, message: String)
     case stopped(snapshot: LiveSnapshot?)
+
+    var allowsManualRestart: Bool {
+        switch self {
+        case .starting, .retrying:
+            return false
+        case .live, .noTraffic, .stalled, .failed, .stopped:
+            return true
+        }
+    }
 }
 
 enum CaptureEvent: Equatable, Sendable {
