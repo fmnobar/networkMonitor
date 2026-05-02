@@ -8,23 +8,30 @@
 
 /* Begin PBXBuildFile section */
 		021000000000000000000001 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000001 /* NetworkMonitor.swift */; };
-		021000000000000000000002 /* AppSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000002 /* AppSupport.swift */; };
+		021000000000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000002 /* AppDelegate.swift */; };
 		021000000000000000000003 /* Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000003 /* Diagnostics.swift */; };
 		021000000000000000000004 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000004 /* Models.swift */; };
 		021000000000000000000005 /* NettopCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000005 /* NettopCaptureService.swift */; };
 		021000000000000000000006 /* TrafficDashboardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000006 /* TrafficDashboardStore.swift */; };
-		021000000000000000000007 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000007 /* Views.swift */; };
+		021000000000000000000007 /* PreviewPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000007 /* PreviewPanelView.swift */; };
 		021000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 03100000000000000000000A /* Assets.xcassets */; };
+		021000000000000000000009 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03100000000000000000000F /* DashboardView.swift */; };
+		02100000000000000000000A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000010 /* SettingsView.swift */; };
+		02100000000000000000000B /* DashboardComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000011 /* DashboardComponents.swift */; };
+		02100000000000000000000C /* TrafficSparklineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000012 /* TrafficSparklineView.swift */; };
+		02100000000000000000000D /* WindowControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000013 /* WindowControllers.swift */; };
+		02100000000000000000000E /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000014 /* StatusItemController.swift */; };
+		02100000000000000000000F /* StatusPreviewSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000015 /* StatusPreviewSupport.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		031000000000000000000001 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/NetworkMonitor.swift; sourceTree = "<group>"; };
-		031000000000000000000002 /* AppSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/AppSupport.swift; sourceTree = "<group>"; };
+		031000000000000000000002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/AppDelegate.swift; sourceTree = "<group>"; };
 		031000000000000000000003 /* Diagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/Diagnostics.swift; sourceTree = "<group>"; };
 		031000000000000000000004 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/Models.swift; sourceTree = "<group>"; };
 		031000000000000000000005 /* NettopCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/NettopCaptureService.swift; sourceTree = "<group>"; };
 		031000000000000000000006 /* TrafficDashboardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/TrafficDashboardStore.swift; sourceTree = "<group>"; };
-		031000000000000000000007 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/Views.swift; sourceTree = "<group>"; };
+		031000000000000000000007 /* PreviewPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/PreviewPanelView.swift; sourceTree = "<group>"; };
 		031000000000000000000008 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		031000000000000000000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = NetworkMonitorApp/Info.plist; sourceTree = "<group>"; };
 		03100000000000000000000A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = NetworkMonitorApp/Assets.xcassets; sourceTree = "<group>"; };
@@ -32,6 +39,13 @@
 		03100000000000000000000C /* archive_app.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = scripts/archive_app.sh; sourceTree = "<group>"; };
 		03100000000000000000000D /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
 		03100000000000000000000E /* NetworkMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NetworkMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		03100000000000000000000F /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/DashboardView.swift; sourceTree = "<group>"; };
+		031000000000000000000010 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/SettingsView.swift; sourceTree = "<group>"; };
+		031000000000000000000011 /* DashboardComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/DashboardComponents.swift; sourceTree = "<group>"; };
+		031000000000000000000012 /* TrafficSparklineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/TrafficSparklineView.swift; sourceTree = "<group>"; };
+		031000000000000000000013 /* WindowControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/WindowControllers.swift; sourceTree = "<group>"; };
+		031000000000000000000014 /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/StatusItemController.swift; sourceTree = "<group>"; };
+		031000000000000000000015 /* StatusPreviewSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/StatusPreviewSupport.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,13 +82,20 @@
 		041000000000000000000003 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
-				031000000000000000000002 /* AppSupport.swift */,
+				031000000000000000000002 /* AppDelegate.swift */,
+				031000000000000000000011 /* DashboardComponents.swift */,
+				03100000000000000000000F /* DashboardView.swift */,
 				031000000000000000000003 /* Diagnostics.swift */,
 				031000000000000000000004 /* Models.swift */,
 				031000000000000000000005 /* NettopCaptureService.swift */,
 				031000000000000000000001 /* NetworkMonitor.swift */,
+				031000000000000000000007 /* PreviewPanelView.swift */,
+				031000000000000000000010 /* SettingsView.swift */,
+				031000000000000000000014 /* StatusItemController.swift */,
+				031000000000000000000015 /* StatusPreviewSupport.swift */,
 				031000000000000000000006 /* TrafficDashboardStore.swift */,
-				031000000000000000000007 /* Views.swift */,
+				031000000000000000000012 /* TrafficSparklineView.swift */,
+				031000000000000000000013 /* WindowControllers.swift */,
 			);
 			name = Sources;
 			sourceTree = "<group>";
@@ -165,13 +186,20 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				021000000000000000000002 /* AppSupport.swift in Sources */,
+				021000000000000000000002 /* AppDelegate.swift in Sources */,
+				02100000000000000000000B /* DashboardComponents.swift in Sources */,
+				021000000000000000000009 /* DashboardView.swift in Sources */,
 				021000000000000000000003 /* Diagnostics.swift in Sources */,
 				021000000000000000000004 /* Models.swift in Sources */,
 				021000000000000000000005 /* NettopCaptureService.swift in Sources */,
 				021000000000000000000001 /* NetworkMonitor.swift in Sources */,
+				021000000000000000000007 /* PreviewPanelView.swift in Sources */,
+				02100000000000000000000A /* SettingsView.swift in Sources */,
+				02100000000000000000000E /* StatusItemController.swift in Sources */,
+				02100000000000000000000F /* StatusPreviewSupport.swift in Sources */,
 				021000000000000000000006 /* TrafficDashboardStore.swift in Sources */,
-				021000000000000000000007 /* Views.swift in Sources */,
+				02100000000000000000000C /* TrafficSparklineView.swift in Sources */,
+				02100000000000000000000D /* WindowControllers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

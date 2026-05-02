@@ -58,24 +58,31 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 - `./scripts/build_app.sh --smoke-ui`
 - Manual smoke confirmed Settings opens from the status menu and `Command-,`, preferences update dashboard/preview presentation, the menu-bar label remains compact, the app has no Dock icon, and clean quit behavior.
 
-## P2
-
 ### 6. Split large UI/support files
 
-**Why:** `Views.swift` and `AppSupport.swift` each mix multiple responsibilities. Splitting them will reduce risk as UI behavior grows.
+**Completed:** Split the large SwiftUI and AppKit support files into focused preview, dashboard, settings, status item, preview support, window controller, and app delegate files without changing behavior.
+
+**Verified:**
+- `swift test`
+- `./scripts/build_app.sh --smoke-ui`
+- Manual smoke confirmed the no-Dock app launch, menu-bar label, preview sparklines, dashboard selectors, Settings from status menu and `Command-,`, restart action, and clean quit behavior.
+
+## P2
+
+### 7. Add launch-at-login support
+
+**Why:** The app is most useful when it starts with the Mac and immediately puts traffic status in the menu bar.
 
 **Scope:**
-- Move preview view, dashboard view, status item controller, preview panel controller, positioning, and interaction model into focused files.
-- Keep behavior unchanged during the split.
-- Avoid broad architecture changes until tests are added around the surfaces being moved.
+- Add a persisted launch-at-login preference in Settings.
+- Use the native macOS service-management API for the app target.
+- Keep capture behavior, dashboard UI, and smoke workflow unchanged.
 
 **Acceptance:**
-- No behavior change.
-- Tests and app build pass.
-- File ownership is clearer for future work.
+- Launch-at-login can be enabled and disabled from Settings.
+- Preference state stays in sync across launches.
+- Tests and app smoke pass.
 
 ## Recommended Next Planning
 
-Plan **P2: Split large UI/support files** next.
-
-After that, plan launch-at-login support as a focused follow-up if it can be implemented and verified cleanly.
+Plan **P2: Add launch-at-login support** next.
