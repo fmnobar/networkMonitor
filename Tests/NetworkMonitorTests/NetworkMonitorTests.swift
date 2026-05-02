@@ -179,6 +179,95 @@ func storeFiltersAndSortsDisplayedProcesses() {
 
 @MainActor
 @Test
+func previewRowsShowActiveThenLowTrafficThenEmptySlots() {
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        smoothingFactor: 0,
+        previewMinimumBytesPerSecond: 1_024
+    )
+    let captureTime = Date(timeIntervalSince1970: 3_250)
+
+    store.consume(.snapshot(LiveSnapshot(
+        capturedAt: captureTime,
+        totalDownloadBytesPerSecond: 4_000,
+        totalUploadBytesPerSecond: 200,
+        processes: [
+            ProcessUsage(pid: 1, name: "Safari", downloadBytesPerSecond: 2_000, uploadBytesPerSecond: 0, totalBytesPerSecond: 2_000, shareOfTotal: 0.48, lastSeen: captureTime),
+            ProcessUsage(pid: 2, name: "Codex", downloadBytesPerSecond: 1_500, uploadBytesPerSecond: 0, totalBytesPerSecond: 1_500, shareOfTotal: 0.36, lastSeen: captureTime),
+            ProcessUsage(pid: 3, name: "Python", downloadBytesPerSecond: 500, uploadBytesPerSecond: 0, totalBytesPerSecond: 500, shareOfTotal: 0.12, lastSeen: captureTime),
+            ProcessUsage(pid: 4, name: "Tailscale", downloadBytesPerSecond: 128, uploadBytesPerSecond: 0, totalBytesPerSecond: 128, shareOfTotal: 0.03, lastSeen: captureTime)
+        ]
+    )))
+
+    #expect(store.topFive.map(\.name) == ["Safari", "Codex"])
+    #expect(previewRowDescriptions(store.previewRows) == [
+        "active:Safari",
+        "active:Codex",
+        "low:Python",
+        "low:Tailscale",
+        "empty"
+    ])
+    #expect(store.previewFilteringMessage == "Dimmed rows are below the 1 KB/s preview threshold.")
+}
+
+@MainActor
+@Test
+func previewRowsExplainAllLowTrafficWithoutLosingRows() {
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        smoothingFactor: 0,
+        previewMinimumBytesPerSecond: 1_024
+    )
+    let captureTime = Date(timeIntervalSince1970: 3_500)
+
+    store.consume(.snapshot(LiveSnapshot(
+        capturedAt: captureTime,
+        totalDownloadBytesPerSecond: 700,
+        totalUploadBytesPerSecond: 80,
+        processes: [
+            ProcessUsage(pid: 11, name: "Mail", downloadBytesPerSecond: 512, uploadBytesPerSecond: 0, totalBytesPerSecond: 512, shareOfTotal: 0.66, lastSeen: captureTime),
+            ProcessUsage(pid: 12, name: "Calendar", downloadBytesPerSecond: 128, uploadBytesPerSecond: 0, totalBytesPerSecond: 128, shareOfTotal: 0.16, lastSeen: captureTime)
+        ]
+    )))
+
+    #expect(store.topFive.isEmpty)
+    #expect(previewRowDescriptions(store.previewRows) == [
+        "low:Mail",
+        "low:Calendar",
+        "empty",
+        "empty",
+        "empty"
+    ])
+    #expect(store.previewRows.count == 5)
+    #expect(store.previewFilteringMessage == "All visible traffic is below the 1 KB/s preview threshold.")
+}
+
+@MainActor
+@Test
+func previewRowsStayEmptyForStartingAndNoTrafficStates() {
+    let store = TrafficDashboardStore(
+        captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
+        previewMinimumBytesPerSecond: 1_024
+    )
+
+    #expect(previewRowDescriptions(store.previewRows) == Array(repeating: "empty", count: 5))
+    #expect(store.previewFilteringMessage == nil)
+    #expect(store.stateMessage == "Launching nettop and waiting for the first sample.")
+
+    store.consume(.snapshot(LiveSnapshot(
+        capturedAt: Date(timeIntervalSince1970: 3_750),
+        totalDownloadBytesPerSecond: 0,
+        totalUploadBytesPerSecond: 0,
+        processes: []
+    )))
+
+    #expect(previewRowDescriptions(store.previewRows) == Array(repeating: "empty", count: 5))
+    #expect(store.previewFilteringMessage == nil)
+    #expect(store.stateMessage == "No process reported network activity in the latest interval.")
+}
+
+@MainActor
+@Test
 func storePreservesSnapshotWhileRetryingAndMarksStalled() {
     let store = TrafficDashboardStore(
         captureService: NettopCaptureService(producer: MockProducer(scripts: [])),
@@ -521,6 +610,19 @@ func statusPopoverPlacementFrameHonorsSafeAreaInsets() {
 private enum MockError: Error {
     case boom
     case stopAfterSnapshot
+}
+
+private func previewRowDescriptions(_ rows: [PreviewProcessRow]) -> [String] {
+    rows.map { row in
+        switch row {
+        case let .active(usage):
+            return "active:\(usage.name)"
+        case let .lowTraffic(usage):
+            return "low:\(usage.name)"
+        case .empty:
+            return "empty"
+        }
+    }
 }
 
 private actor WaitPlan {

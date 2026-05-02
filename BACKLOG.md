@@ -31,22 +31,16 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 - `./scripts/build_app.sh --smoke-ui`
 - Manual smoke confirmed table icons, share bars, direction cells, preview, and clean quit behavior.
 
-## P0
-
 ### 3. Improve preview empty and low-traffic states
 
-**Why:** The preview filters rows below `1_024 B/s`, so it can look empty even while the menu-bar label still shows traffic.
+**Completed:** Added fixed five-row preview presentation with active rows first, dimmed low-traffic rows filling open slots, and filtering copy when low-traffic rows explain menu-bar totals.
 
-**Scope:**
-- Add clear copy when traffic exists but is below the preview threshold.
-- Consider showing the highest low-traffic rows dimmed, or make the threshold configurable.
-- Keep the fixed five-row preview layout stable.
+**Verified:**
+- `swift test`
+- `./scripts/build_app.sh --smoke-ui`
+- Manual smoke confirmed the preview panel, dashboard, menu-bar label, and clean quit behavior.
 
-**Acceptance:**
-- Empty preview states explain whether capture is starting, idle, filtered, or failed.
-- The menu-bar label and preview no longer appear contradictory.
-
-## P2
+## P0
 
 ### 4. Expose capture history with lightweight trends
 
@@ -60,6 +54,8 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 **Acceptance:**
 - Users can see whether traffic is rising, falling, or spiking.
 - Existing live and average behavior remains correct.
+
+## P2
 
 ### 5. Add preferences for common behavior
 
@@ -91,6 +87,6 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 
 ## Recommended Next Planning
 
-Plan **P0: Improve preview empty and low-traffic states** next.
+Plan **P0: Expose capture history with lightweight trends** next.
 
-After that, revisit **P2: Expose capture history with lightweight trends**. The preview item addresses the remaining UI contradiction between the menu-bar label and filtered preview rows.
+After that, plan **P2: Add preferences for common behavior**. Trends are now the highest-impact visible improvement before moving threshold and display choices into settings.

@@ -80,6 +80,12 @@ enum DashboardViewState: Equatable {
     }
 }
 
+enum PreviewProcessRow: Equatable {
+    case active(ProcessUsage)
+    case lowTraffic(ProcessUsage)
+    case empty
+}
+
 enum CaptureEvent: Equatable, Sendable {
     case starting
     case snapshot(LiveSnapshot)

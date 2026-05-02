@@ -46,11 +46,16 @@ struct PreviewPanelView: View {
                     title: bannerTitle,
                     message: stateMessage
                 )
+            } else if let filteringMessage = store.previewFilteringMessage, !filteringMessage.isEmpty {
+                statusBanner(
+                    title: "Filtered",
+                    message: filteringMessage
+                )
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(previewRows.enumerated()), id: \.offset) { _, usage in
-                    previewRow(usage: usage)
+                ForEach(Array(store.previewRows.enumerated()), id: \.offset) { _, row in
+                    previewRow(row)
                 }
             }
 
@@ -111,12 +116,6 @@ struct PreviewPanelView: View {
         }
     }
 
-    private var previewRows: [ProcessUsage?] {
-        let visibleRows = store.topFive.map(Optional.some)
-        let fillerRows = Array<ProcessUsage?>(repeating: nil, count: max(0, 5 - visibleRows.count))
-        return visibleRows + fillerRows
-    }
-
     private var bannerTitle: String {
         switch store.viewState {
         case .starting:
@@ -137,34 +136,54 @@ struct PreviewPanelView: View {
     }
 
     @ViewBuilder
-    private func previewRow(usage: ProcessUsage?) -> some View {
+    private func previewRow(_ row: PreviewProcessRow) -> some View {
+        switch row {
+        case let .active(usage):
+            previewUsageRow(usage: usage, isLowTraffic: false)
+
+        case let .lowTraffic(usage):
+            previewUsageRow(usage: usage, isLowTraffic: true)
+
+        case .empty:
+            previewEmptyRow
+        }
+    }
+
+    private func previewUsageRow(usage: ProcessUsage, isLowTraffic: Bool) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            if let usage {
-                Text(usage.name)
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
-            } else {
-                Text(" ")
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
-                    .hidden()
-            }
+            Text(usage.name)
+                .font(.body.weight(.medium))
+                .foregroundStyle(isLowTraffic ? .secondary : .primary)
+                .lineLimit(1)
 
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                if let usage {
-                    Text("↓ \(NetworkFormatting.rate(usage.downloadBytesPerSecond))")
-                    Text("↑ \(NetworkFormatting.rate(usage.uploadBytesPerSecond))")
-                } else {
-                    Text(" ")
-                        .hidden()
-                    Text(" ")
-                        .hidden()
-                }
+                Text("↓ \(NetworkFormatting.rate(usage.downloadBytesPerSecond))")
+                Text("↑ \(NetworkFormatting.rate(usage.uploadBytesPerSecond))")
             }
             .font(.system(.caption, design: .monospaced))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(isLowTraffic ? .tertiary : .secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+    }
+
+    private var previewEmptyRow: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(" ")
+                .font(.body.weight(.medium))
+                .lineLimit(1)
+                .hidden()
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(" ")
+                    .hidden()
+                Text(" ")
+                    .hidden()
+            }
+            .font(.system(.caption, design: .monospaced))
         }
         .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
     }

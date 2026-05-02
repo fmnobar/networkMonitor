@@ -80,8 +80,55 @@ final class TrafficDashboardStore: ObservableObject {
             .prefix(5))
     }
 
+    var previewRows: [PreviewProcessRow] {
+        guard let snapshot else {
+            return emptyPreviewRows
+        }
+
+        let activeRows = snapshot.processes
+            .filter { $0.totalBytesPerSecond >= previewMinimumBytesPerSecond }
+            .prefix(5)
+            .map(PreviewProcessRow.active)
+        let remainingSlots = max(0, 5 - activeRows.count)
+        let lowTrafficRows = snapshot.processes
+            .filter { $0.totalBytesPerSecond > 0 && $0.totalBytesPerSecond < previewMinimumBytesPerSecond }
+            .prefix(remainingSlots)
+            .map(PreviewProcessRow.lowTraffic)
+        let visibleRows = activeRows + lowTrafficRows
+
+        return visibleRows + Array(repeating: .empty, count: max(0, 5 - visibleRows.count))
+    }
+
+    var previewFilteringMessage: String? {
+        guard let snapshot else {
+            return nil
+        }
+
+        let activeRowCount = snapshot.processes.filter { $0.totalBytesPerSecond >= previewMinimumBytesPerSecond }.count
+        let shownLowTrafficRowCount = previewRows.filter { row in
+            if case .lowTraffic = row {
+                return true
+            }
+            return false
+        }.count
+        guard shownLowTrafficRowCount > 0 else {
+            return nil
+        }
+
+        let thresholdText = NetworkFormatting.rate(previewMinimumBytesPerSecond)
+        if activeRowCount == 0 {
+            return "All visible traffic is below the \(thresholdText) preview threshold."
+        }
+
+        return "Dimmed rows are below the \(thresholdText) preview threshold."
+    }
+
     var activeSnapshot: LiveSnapshot? {
         snapshot
+    }
+
+    private var emptyPreviewRows: [PreviewProcessRow] {
+        Array(repeating: .empty, count: 5)
     }
 
     var displayedProcesses: [ProcessUsage] {
