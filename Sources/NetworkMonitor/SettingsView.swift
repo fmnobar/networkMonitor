@@ -2,11 +2,27 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var preferences: NetworkMonitorPreferences
+    @ObservedObject var launchAtLogin: LaunchAtLoginController
 
     var body: some View {
         TabView {
             Form {
                 Section("General") {
+                    Toggle(
+                        "Launch at Login",
+                        isOn: Binding(
+                            get: { launchAtLogin.isEnabled },
+                            set: { launchAtLogin.setEnabled($0) }
+                        )
+                    )
+                    .disabled(launchAtLogin.isUpdating || launchAtLogin.status == .notFound)
+
+                    if let statusMessage = launchAtLogin.statusMessage {
+                        Text(statusMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Picker("Default mode", selection: $preferences.defaultDisplayMode) {
                         ForEach(TrafficDisplayMode.allCases) { mode in
                             Text(mode.title).tag(mode)
@@ -51,6 +67,6 @@ struct SettingsView: View {
                 Label("Display", systemImage: "textformat.size")
             }
         }
-        .frame(width: 460, height: 300)
+        .frame(width: 460, height: 340)
     }
 }

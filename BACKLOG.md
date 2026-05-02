@@ -67,22 +67,15 @@ Priorities are ordered by user impact, implementation risk, and how much each it
 - `./scripts/build_app.sh --smoke-ui`
 - Manual smoke confirmed the no-Dock app launch, menu-bar label, preview sparklines, dashboard selectors, Settings from status menu and `Command-,`, restart action, and clean quit behavior.
 
-## P2
-
 ### 7. Add launch-at-login support
 
-**Why:** The app is most useful when it starts with the Mac and immediately puts traffic status in the menu bar.
+**Completed:** Added a native Settings toggle backed by `SMAppService.mainApp`, with persisted preference state, system-status synchronization, approval/unavailable messaging, and fake-service test coverage.
 
-**Scope:**
-- Add a persisted launch-at-login preference in Settings.
-- Use the native macOS service-management API for the app target.
-- Keep capture behavior, dashboard UI, and smoke workflow unchanged.
-
-**Acceptance:**
-- Launch-at-login can be enabled and disabled from Settings.
-- Preference state stays in sync across launches.
-- Tests and app smoke pass.
+**Verified:**
+- `swift test`
+- `./scripts/build_app.sh --smoke-ui`
+- Manual smoke confirmed no-Dock app launch, menu-bar label, preview panel, dashboard window, Settings from status menu and `Command-,`, launch-at-login unavailable messaging in the unsigned debug build, and clean quit behavior.
 
 ## Recommended Next Planning
 
-Plan **P2: Add launch-at-login support** next.
+Refresh the backlog with a new UI/functionality inspection pass next.

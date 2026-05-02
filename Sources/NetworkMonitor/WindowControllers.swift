@@ -3,12 +3,12 @@ import SwiftUI
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
-    init(preferences: NetworkMonitorPreferences) {
-        let rootView = SettingsView(preferences: preferences)
+    init(preferences: NetworkMonitorPreferences, launchAtLogin: LaunchAtLoginController) {
+        let rootView = SettingsView(preferences: preferences, launchAtLogin: launchAtLogin)
         let hostingController = NSHostingController(rootView: rootView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 300),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 340),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false

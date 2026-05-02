@@ -22,6 +22,7 @@
 		02100000000000000000000D /* WindowControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000013 /* WindowControllers.swift */; };
 		02100000000000000000000E /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000014 /* StatusItemController.swift */; };
 		02100000000000000000000F /* StatusPreviewSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000015 /* StatusPreviewSupport.swift */; };
+		021000000000000000000010 /* LaunchAtLoginController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031000000000000000000016 /* LaunchAtLoginController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +47,7 @@
 		031000000000000000000013 /* WindowControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/WindowControllers.swift; sourceTree = "<group>"; };
 		031000000000000000000014 /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/StatusItemController.swift; sourceTree = "<group>"; };
 		031000000000000000000015 /* StatusPreviewSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/StatusPreviewSupport.swift; sourceTree = "<group>"; };
+		031000000000000000000016 /* LaunchAtLoginController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/NetworkMonitor/LaunchAtLoginController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -86,6 +88,7 @@
 				031000000000000000000011 /* DashboardComponents.swift */,
 				03100000000000000000000F /* DashboardView.swift */,
 				031000000000000000000003 /* Diagnostics.swift */,
+				031000000000000000000016 /* LaunchAtLoginController.swift */,
 				031000000000000000000004 /* Models.swift */,
 				031000000000000000000005 /* NettopCaptureService.swift */,
 				031000000000000000000001 /* NetworkMonitor.swift */,
@@ -190,6 +193,7 @@
 				02100000000000000000000B /* DashboardComponents.swift in Sources */,
 				021000000000000000000009 /* DashboardView.swift in Sources */,
 				021000000000000000000003 /* Diagnostics.swift in Sources */,
+				021000000000000000000010 /* LaunchAtLoginController.swift in Sources */,
 				021000000000000000000004 /* Models.swift in Sources */,
 				021000000000000000000005 /* NettopCaptureService.swift in Sources */,
 				021000000000000000000001 /* NetworkMonitor.swift in Sources */,

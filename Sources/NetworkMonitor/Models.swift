@@ -142,6 +142,7 @@ final class NetworkMonitorPreferences: ObservableObject {
         static let previewThreshold = "previewThreshold"
         static let rateUnitStyle = "rateUnitStyle"
         static let dashboardProcessVisibility = "dashboardProcessVisibility"
+        static let launchAtLoginEnabled = "launchAtLoginEnabled"
     }
 
     private let userDefaults: UserDefaults
@@ -176,6 +177,12 @@ final class NetworkMonitorPreferences: ObservableObject {
         }
     }
 
+    @Published var launchAtLoginEnabled: Bool {
+        didSet {
+            userDefaults.set(launchAtLoginEnabled, forKey: Key.launchAtLoginEnabled)
+        }
+    }
+
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
         self.defaultDisplayMode = TrafficDisplayMode(rawValue: userDefaults.string(forKey: Key.defaultDisplayMode) ?? "") ?? .live
@@ -187,6 +194,7 @@ final class NetworkMonitorPreferences: ObservableObject {
         }
         self.rateUnitStyle = NetworkRateUnitStyle(rawValue: userDefaults.string(forKey: Key.rateUnitStyle) ?? "") ?? .binary
         self.dashboardProcessVisibility = DashboardProcessVisibility(rawValue: userDefaults.string(forKey: Key.dashboardProcessVisibility) ?? "") ?? .allActive
+        self.launchAtLoginEnabled = userDefaults.bool(forKey: Key.launchAtLoginEnabled)
     }
 
     var previewMinimumBytesPerSecond: UInt64 {

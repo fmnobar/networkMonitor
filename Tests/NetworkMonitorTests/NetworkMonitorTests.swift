@@ -86,6 +86,7 @@ func preferencesDefaultToCurrentPresentationBehavior() {
     #expect(preferences.previewMinimumBytesPerSecond == 1_024)
     #expect(preferences.rateUnitStyle == .binary)
     #expect(preferences.dashboardProcessVisibility == .allActive)
+    #expect(!preferences.launchAtLoginEnabled)
     #expect(NetworkFormatting.compactRate(1_536, unitStyle: preferences.rateUnitStyle) == "1.5K")
 }
 
@@ -100,6 +101,7 @@ func preferencesPersistPresentationValues() {
     preferences.previewThreshold = .tenKilobytes
     preferences.rateUnitStyle = .decimal
     preferences.dashboardProcessVisibility = .abovePreviewThreshold
+    preferences.launchAtLoginEnabled = true
 
     let reloadedPreferences = NetworkMonitorPreferences(userDefaults: defaults)
     #expect(reloadedPreferences.defaultDisplayMode == .average)
@@ -108,6 +110,113 @@ func preferencesPersistPresentationValues() {
     #expect(reloadedPreferences.previewMinimumBytesPerSecond == 10_240)
     #expect(reloadedPreferences.rateUnitStyle == .decimal)
     #expect(reloadedPreferences.dashboardProcessVisibility == .abovePreviewThreshold)
+    #expect(reloadedPreferences.launchAtLoginEnabled)
+}
+
+@MainActor
+@Test
+func launchAtLoginControllerSyncsEnabledStatus() {
+    let preferences = testPreferences()
+    let service = MockLaunchAtLoginService(status: .enabled)
+
+    let controller = LaunchAtLoginController(preferences: preferences, service: service)
+
+    #expect(controller.status == .enabled)
+    #expect(controller.isEnabled)
+    #expect(preferences.launchAtLoginEnabled)
+}
+
+@MainActor
+@Test
+func launchAtLoginControllerSyncsNotRegisteredStatus() {
+    let preferences = testPreferences()
+    preferences.launchAtLoginEnabled = true
+    let service = MockLaunchAtLoginService(status: .notRegistered)
+
+    let controller = LaunchAtLoginController(preferences: preferences, service: service)
+
+    #expect(controller.status == .notRegistered)
+    #expect(!controller.isEnabled)
+    #expect(!preferences.launchAtLoginEnabled)
+}
+
+@MainActor
+@Test
+func launchAtLoginControllerRegistersAndPersistsEnabledState() {
+    let preferences = testPreferences()
+    let service = MockLaunchAtLoginService(status: .notRegistered, statusAfterRegister: .enabled)
+    let controller = LaunchAtLoginController(preferences: preferences, service: service)
+
+    controller.setEnabled(true)
+
+    #expect(service.registerCallCount == 1)
+    #expect(service.unregisterCallCount == 0)
+    #expect(controller.status == .enabled)
+    #expect(controller.isEnabled)
+    #expect(preferences.launchAtLoginEnabled)
+}
+
+@MainActor
+@Test
+func launchAtLoginControllerUnregistersAndPersistsDisabledState() {
+    let preferences = testPreferences()
+    let service = MockLaunchAtLoginService(status: .enabled, statusAfterUnregister: .notRegistered)
+    let controller = LaunchAtLoginController(preferences: preferences, service: service)
+
+    controller.setEnabled(false)
+
+    #expect(service.registerCallCount == 0)
+    #expect(service.unregisterCallCount == 1)
+    #expect(controller.status == .notRegistered)
+    #expect(!controller.isEnabled)
+    #expect(!preferences.launchAtLoginEnabled)
+}
+
+@MainActor
+@Test
+func launchAtLoginControllerShowsApprovalMessage() {
+    let preferences = testPreferences()
+    let service = MockLaunchAtLoginService(status: .requiresApproval)
+
+    let controller = LaunchAtLoginController(preferences: preferences, service: service)
+
+    #expect(controller.isEnabled)
+    #expect(preferences.launchAtLoginEnabled)
+    #expect(controller.statusMessage == "Needs approval in System Settings.")
+}
+
+@MainActor
+@Test
+func launchAtLoginControllerDoesNotPersistUnavailableState() {
+    let preferences = testPreferences()
+    preferences.launchAtLoginEnabled = true
+    let service = MockLaunchAtLoginService(status: .notFound)
+
+    let controller = LaunchAtLoginController(preferences: preferences, service: service)
+    controller.setEnabled(true)
+
+    #expect(service.registerCallCount == 0)
+    #expect(controller.status == .notFound)
+    #expect(!controller.isEnabled)
+    #expect(!preferences.launchAtLoginEnabled)
+    #expect(controller.statusMessage == "Launch at login is unavailable for this build.")
+}
+
+@MainActor
+@Test
+func launchAtLoginControllerRevertsAfterRegisterError() {
+    let preferences = testPreferences()
+    let service = MockLaunchAtLoginService(status: .notRegistered)
+    service.registerError = MockError.boom
+    let controller = LaunchAtLoginController(preferences: preferences, service: service)
+
+    controller.setEnabled(true)
+
+    #expect(service.registerCallCount == 1)
+    #expect(controller.status == .notRegistered)
+    #expect(!controller.isEnabled)
+    #expect(!preferences.launchAtLoginEnabled)
+    #expect(controller.statusMessage?.hasPrefix("Could not update launch at login:") == true)
 }
 
 @Test
@@ -838,6 +947,43 @@ func statusPopoverPlacementFrameHonorsSafeAreaInsets() {
 private enum MockError: Error {
     case boom
     case stopAfterSnapshot
+}
+
+private final class MockLaunchAtLoginService: LaunchAtLoginServicing {
+    var status: LaunchAtLoginStatus
+    var registerError: Error?
+    var unregisterError: Error?
+    private(set) var registerCallCount = 0
+    private(set) var unregisterCallCount = 0
+
+    private let statusAfterRegister: LaunchAtLoginStatus
+    private let statusAfterUnregister: LaunchAtLoginStatus
+
+    init(
+        status: LaunchAtLoginStatus,
+        statusAfterRegister: LaunchAtLoginStatus = .enabled,
+        statusAfterUnregister: LaunchAtLoginStatus = .notRegistered
+    ) {
+        self.status = status
+        self.statusAfterRegister = statusAfterRegister
+        self.statusAfterUnregister = statusAfterUnregister
+    }
+
+    func register() throws {
+        registerCallCount += 1
+        if let registerError {
+            throw registerError
+        }
+        status = statusAfterRegister
+    }
+
+    func unregister() throws {
+        unregisterCallCount += 1
+        if let unregisterError {
+            throw unregisterError
+        }
+        status = statusAfterUnregister
+    }
 }
 
 private func isolatedUserDefaults() -> UserDefaults {

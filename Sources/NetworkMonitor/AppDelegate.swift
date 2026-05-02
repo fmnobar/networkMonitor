@@ -3,6 +3,7 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences: NetworkMonitorPreferences
+    private let launchAtLoginController: LaunchAtLoginController
     private let store: TrafficDashboardStore
     private let launchOptions = NetworkMonitorLaunchOptions()
     private var statusItemController: StatusItemController?
@@ -12,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     override init() {
         let preferences = NetworkMonitorPreferences()
         self.preferences = preferences
+        self.launchAtLoginController = LaunchAtLoginController(preferences: preferences)
         self.store = TrafficDashboardStore(preferences: preferences)
         super.init()
     }
@@ -26,7 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
-        settingsWindowController = SettingsWindowController(preferences: preferences)
+        settingsWindowController = SettingsWindowController(
+            preferences: preferences,
+            launchAtLogin: launchAtLoginController
+        )
 
         statusItemController = StatusItemController(
             store: store,
@@ -69,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc
     private func openSettings() {
+        launchAtLoginController.synchronizeWithSystem()
         settingsWindowController?.showSettings()
     }
 
