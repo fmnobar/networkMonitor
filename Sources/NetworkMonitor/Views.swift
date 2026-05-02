@@ -30,12 +30,20 @@ struct PreviewPanelView: View {
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("↓ \(store.totalDownloadText)")
-                    Text("↑ \(store.totalUploadText)")
+                VStack(alignment: .trailing, spacing: 4) {
+                    previewMetricTrend(
+                        symbol: "↓",
+                        value: store.totalDownloadText,
+                        trend: store.downloadTrend,
+                        tint: .blue
+                    )
+                    previewMetricTrend(
+                        symbol: "↑",
+                        value: store.totalUploadText,
+                        trend: store.uploadTrend,
+                        tint: .green
+                    )
                 }
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
             }
 
             previewModeControls
@@ -134,6 +142,25 @@ struct PreviewPanelView: View {
         case .stopped:
             return "Stopped"
         }
+    }
+
+    private func previewMetricTrend(
+        symbol: String,
+        value: String,
+        trend: TrafficTrendSeries,
+        tint: Color
+    ) -> some View {
+        HStack(spacing: 6) {
+            TrafficSparklineView(series: trend, tint: tint, height: 18)
+                .frame(width: 78)
+
+            Text("\(symbol) \(value)")
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(symbol == "↓" ? "Download" : "Upload") \(value)")
     }
 
     @ViewBuilder
@@ -333,6 +360,7 @@ struct DashboardView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .frame(width: 220)
 
                 if store.selectedDisplayMode == .average {
@@ -342,6 +370,7 @@ struct DashboardView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .labelsHidden()
                     .frame(width: 190)
                 }
 
@@ -523,6 +552,7 @@ struct DashboardView: View {
 private struct TrafficSparklineView: View {
     let series: TrafficTrendSeries
     let tint: Color
+    var height: CGFloat = 32
 
     var body: some View {
         Group {
@@ -552,7 +582,7 @@ private struct TrafficSparklineView: View {
                 .chartYScale(domain: -0.05...1)
             }
         }
-        .frame(height: 32)
+        .frame(height: height)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color(nsColor: .separatorColor).opacity(0.25))
