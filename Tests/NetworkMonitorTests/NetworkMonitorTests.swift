@@ -60,7 +60,7 @@ func compactStatusLabelUsesBoundedRateFormatting() {
 
     let label = NetworkFormatting.statusLabel(for: snapshot)
 
-    #expect(label == "↓ 120M ↑ 1.5K")
+    #expect(label == "↓ 120M\n↑ 1.5K")
     #expect(!label.contains("/s"))
     #expect(label.count <= StatusPreviewLayout.statusItemReferenceText.count)
 }

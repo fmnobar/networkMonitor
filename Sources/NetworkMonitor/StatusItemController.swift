@@ -136,7 +136,8 @@ final class StatusItemController: NSObject {
         button.target = self
         button.action = #selector(handleStatusItemAction(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        button.lineBreakMode = .byClipping
+        button.lineBreakMode = .byWordWrapping
+        button.cell?.wraps = true
         updateButtonTitle(with: store.statusLabelText)
     }
 
@@ -165,20 +166,28 @@ final class StatusItemController: NSObject {
             return
         }
 
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
-            .foregroundColor: NSColor.labelColor
+        button.toolTip = text.replacingOccurrences(of: "\n", with: " ")
+        button.attributedTitle = NSAttributedString(string: text, attributes: Self.statusItemTextAttributes)
+    }
+
+    private static var statusItemTextAttributes: [NSAttributedString.Key: Any] {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        paragraphStyle.lineBreakMode = .byClipping
+        paragraphStyle.minimumLineHeight = 10
+        paragraphStyle.maximumLineHeight = 10
+
+        return [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraphStyle
         ]
-        button.attributedTitle = NSAttributedString(string: text, attributes: attributes)
     }
 
     private static func measureStatusItemWidth() -> CGFloat {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-        ]
         let reference = NSAttributedString(
             string: StatusPreviewLayout.statusItemReferenceText,
-            attributes: attributes
+            attributes: statusItemTextAttributes
         )
         return ceil(reference.size().width) + 16
     }

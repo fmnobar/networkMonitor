@@ -413,7 +413,7 @@ enum NetworkFormatting {
         for snapshot: LiveSnapshot,
         unitStyle: NetworkRateUnitStyle = .binary
     ) -> String {
-        "↓ \(compactRate(snapshot.totalDownloadBytesPerSecond, unitStyle: unitStyle)) ↑ \(compactRate(snapshot.totalUploadBytesPerSecond, unitStyle: unitStyle))"
+        "↓ \(compactRate(snapshot.totalDownloadBytesPerSecond, unitStyle: unitStyle))\n↑ \(compactRate(snapshot.totalUploadBytesPerSecond, unitStyle: unitStyle))"
     }
 
     static func retryDescription(_ status: CaptureRecoveryState) -> String {
