@@ -180,6 +180,7 @@ final class StatusItemController: NSObject {
         return [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
             .foregroundColor: NSColor.labelColor,
+            .baselineOffset: -5,
             .paragraphStyle: paragraphStyle
         ]
     }
